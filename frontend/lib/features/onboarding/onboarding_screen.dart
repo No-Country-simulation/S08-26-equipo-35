@@ -8,6 +8,7 @@ import '../../design_system/components/ui/text_fields/app_text_field.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../router/app_router.dart';
 
 /// SOLO MAQUETA — sin controllers, sin onPressed reales, sin navegación.
 /// Reemplaza los `() {}` y el placeholder de logo cuando conectes lógica.
@@ -159,7 +160,8 @@ class _AuthCard extends StatelessWidget {
               color: Colors.white,
               size: 18,
             ),
-            onPressed: () {},
+            onPressed: () =>
+                Navigator.pushReplacementNamed(context, AppRoutes.home),
           ),
           const SizedBox(height: AppSpacing.md),
           Text.rich(

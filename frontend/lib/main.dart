@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:splitflow/design_system/theme/app_theme.dart';
-import 'package:splitflow/features/onboarding/onboarding_screen.dart';
+import 'design_system/theme/app_theme.dart';
+import 'router/app_router.dart';
 
 void main() {
-  runApp(const MainApp());
+  runApp(const SplitFlowApp());
 }
 
-void nextapp() {}
-
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class SplitFlowApp extends StatelessWidget {
+  const SplitFlowApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +15,8 @@ class MainApp extends StatelessWidget {
       title: 'SplitFlow',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
-      home: Scaffold(body: Center(child: OnboardingScreen())),
+      initialRoute: AppRoutes.onboarding,
+      routes: AppRouter.routes,
     );
   }
 }

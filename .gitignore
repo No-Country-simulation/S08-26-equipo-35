@@ -1,0 +1,6 @@
+.env
+generate_hash.py
+env_SplitFlow/
+__pycache__/
+*.pyc
+*.pyo

@@ -17,5 +17,15 @@ app.include_router(auth_router, prefix="/api/v1", tags=["Auth"])
 #======================================================================================================================
 
 
+from fastapi.middleware.cors import CORSMiddleware
 
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # en desarrollo puedes dejarlo abierto
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 

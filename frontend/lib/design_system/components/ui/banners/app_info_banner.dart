@@ -15,6 +15,7 @@ class AppInfoBanner extends StatelessWidget {
     required this.description,
     this.background = AppMd3Colors.surfaceContainerLow,
     this.iconBackground = Colors.white,
+    this.trailing,
   });
 
   final Widget icon;
@@ -22,6 +23,7 @@ class AppInfoBanner extends StatelessWidget {
   final String description;
   final Color background;
   final Color iconBackground;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +51,7 @@ class AppInfoBanner extends StatelessWidget {
               ],
             ),
           ),
+          if (trailing != null) ...[const SizedBox(width: AppSpacing.sm), trailing!],
         ],
       ),
     );

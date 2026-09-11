@@ -117,6 +117,8 @@ class Home extends StatelessWidget {
                   ),
                   metaText: 'Last added: Tapas dinner (\$64.00)',
                   metaTrailingText: '2h ago',
+                  onTap: () =>
+                      Navigator.pushNamed(context, AppRoutes.groupDetails),
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 GroupCard(
@@ -148,6 +150,8 @@ class Home extends StatelessWidget {
                   ),
                   metaText: 'Last added: Wi-Fi & Electricity',
                   metaTrailingText: 'Yesterday',
+                  onTap: () =>
+                      Navigator.pushNamed(context, AppRoutes.groupDetails),
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 GroupCard(
@@ -183,6 +187,8 @@ class Home extends StatelessWidget {
                   ),
                   metaText: 'All payments settled',
                   metaTrailingText: '3d ago',
+                  onTap: () =>
+                      Navigator.pushNamed(context, AppRoutes.groupDetails),
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 AppInfoBanner(

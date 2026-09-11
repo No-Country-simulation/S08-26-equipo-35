@@ -11,6 +11,7 @@ class AppTextAction extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.emphasized = false,
+    this.icon,
   });
 
   final String label;
@@ -18,17 +19,21 @@ class AppTextAction extends StatelessWidget {
 
   /// true = texto indigo en negrita (ej. "Save"); false = texto slate (ej. "Cancel").
   final bool emphasized;
+  final Widget? icon;
 
   @override
   Widget build(BuildContext context) {
+    final color = emphasized ? AppMd3Colors.primaryContainer : AppSemanticColors.slate600;
+
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
-      child: Text(
-        label,
-        style: AppTypography.titleMd(
-          color: emphasized ? AppMd3Colors.primaryContainer : AppSemanticColors.slate600,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[icon!, const SizedBox(width: 4)],
+          Text(label, style: AppTypography.titleMd(color: color)),
+        ],
       ),
     );
   }

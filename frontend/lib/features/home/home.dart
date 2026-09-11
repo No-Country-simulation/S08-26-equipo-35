@@ -12,6 +12,7 @@ import '../../design_system/navigations/app_top_bar.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../router/app_router.dart';
 
 /// SOLO MAQUETA — sin controllers, sin onTap reales, sin navegación.
 /// Todos los datos están hardcodeados igual que en la captura de diseño.
@@ -204,7 +205,8 @@ class Home extends StatelessWidget {
               label: 'Add Expense',
               leadingIcon: const Icon(Icons.add, color: Colors.white, size: 18),
               expand: false,
-              onPressed: () {},
+              onPressed: () =>
+                  Navigator.pushNamed(context, AppRoutes.logExpense),
             ),
           ),
         ],

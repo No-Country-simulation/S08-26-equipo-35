@@ -12,7 +12,8 @@ class AppInfoBanner extends StatelessWidget {
     super.key,
     required this.icon,
     required this.title,
-    required this.description,
+    this.description,
+    this.descriptionWidget,
     this.background = AppMd3Colors.surfaceContainerLow,
     this.iconBackground = Colors.white,
     this.trailing,
@@ -20,7 +21,12 @@ class AppInfoBanner extends StatelessWidget {
 
   final Widget icon;
   final String title;
-  final String description;
+
+  /// Texto plano simple. Para descripciones con negritas u otros estilos
+  /// mezclados (ej. "You paid **$124.00**..."), usa `descriptionWidget` en
+  /// vez de esto — si ambos vienen, `descriptionWidget` gana.
+  final String? description;
+  final Widget? descriptionWidget;
   final Color background;
   final Color iconBackground;
   final Widget? trailing;
@@ -45,13 +51,22 @@ class AppInfoBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: AppTypography.titleMd(color: AppSemanticColors.slate900)),
-                const SizedBox(height: 2),
-                Text(description, style: AppTypography.bodySm(color: AppSemanticColors.slate600)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(title, style: AppTypography.titleMd(color: AppSemanticColors.slate900)),
+                    ),
+                    if (trailing != null) trailing!,
+                  ],
+                ),
+                if (descriptionWidget != null || description != null) ...[
+                  const SizedBox(height: 2),
+                  descriptionWidget ??
+                      Text(description!, style: AppTypography.bodySm(color: AppSemanticColors.slate600)),
+                ],
               ],
             ),
           ),
-          if (trailing != null) ...[const SizedBox(width: AppSpacing.sm), trailing!],
         ],
       ),
     );

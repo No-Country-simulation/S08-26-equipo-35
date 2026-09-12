@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../features/expense_details/expense_details.dart';
 import '../features/group_details/group_details.dart';
 import '../features/home/home.dart';
 import '../features/log_expense/log_expense.dart';
@@ -13,6 +14,7 @@ class AppRoutes {
   static const String home = '/home';
   static const String logExpense = '/log-expense';
   static const String groupDetails = '/group-details';
+  static const String expenseDetails = '/expense-details';
 }
 
 /// Router sencillo: un mapa de rutas nombradas, sin guards de auth ni
@@ -26,5 +28,6 @@ class AppRouter {
     AppRoutes.home: (context) => const Home(),
     AppRoutes.logExpense: (context) => LogExpense(),
     AppRoutes.groupDetails: (context) => const GroupDetails(),
+    AppRoutes.expenseDetails: (context) => const ExpenseDetails(),
   };
 }

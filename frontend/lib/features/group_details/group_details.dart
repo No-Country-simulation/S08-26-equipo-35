@@ -16,6 +16,7 @@ import '../../design_system/navigations/app_top_bar.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../router/app_router.dart';
 
 /// SOLO MAQUETA — sin lógica de carga de datos, sin navegación real.
 /// Todo hardcodeado igual que en la captura de diseño.
@@ -249,7 +250,8 @@ class GroupDetails extends StatelessWidget {
               totalAmountLabel: '\$124.00',
               statusLabel: '+\$93.00 for you',
               status: ExpenseRowStatus.owed,
-              onTap: () {},
+              onTap: () =>
+                  Navigator.pushNamed(context, AppRoutes.expenseDetails),
             ),
             const SizedBox(height: AppSpacing.xs),
             ExpenseListRow(
@@ -265,7 +267,8 @@ class GroupDetails extends StatelessWidget {
               totalAmountLabel: '\$104.00',
               statusLabel: 'You owe \$26.00',
               status: ExpenseRowStatus.owe,
-              onTap: () {},
+              onTap: () =>
+                  Navigator.pushNamed(context, AppRoutes.expenseDetails),
             ),
             const SizedBox(height: AppSpacing.xs),
             ExpenseListRow(
@@ -281,7 +284,8 @@ class GroupDetails extends StatelessWidget {
               totalAmountLabel: '\$36.00',
               statusLabel: 'You owe \$12.00',
               status: ExpenseRowStatus.owe,
-              onTap: () {},
+              onTap: () =>
+                  Navigator.pushNamed(context, AppRoutes.expenseDetails),
             ),
             const SizedBox(height: 80),
           ],

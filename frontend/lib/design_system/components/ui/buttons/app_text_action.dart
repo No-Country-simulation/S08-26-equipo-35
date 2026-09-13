@@ -12,6 +12,7 @@ class AppTextAction extends StatelessWidget {
     required this.onPressed,
     this.emphasized = false,
     this.icon,
+    this.trailingIcon,
   });
 
   final String label;
@@ -20,6 +21,7 @@ class AppTextAction extends StatelessWidget {
   /// true = texto indigo en negrita (ej. "Save"); false = texto slate (ej. "Cancel").
   final bool emphasized;
   final Widget? icon;
+  final Widget? trailingIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +35,7 @@ class AppTextAction extends StatelessWidget {
         children: [
           if (icon != null) ...[icon!, const SizedBox(width: 4)],
           Text(label, style: AppTypography.titleMd(color: color)),
+          if (trailingIcon != null) ...[const SizedBox(width: 2), trailingIcon!],
         ],
       ),
     );

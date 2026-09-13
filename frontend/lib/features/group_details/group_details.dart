@@ -96,7 +96,8 @@ class GroupDetails extends StatelessWidget {
                 backgroundOverride: const Color(
                   0xFF065F46,
                 ), // verde oscuro, no es ninguna variante
-                onPressed: () {},
+                onPressed: () =>
+                    Navigator.pushNamed(context, AppRoutes.balances),
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -178,7 +179,8 @@ class GroupDetails extends StatelessWidget {
                     ),
                     iconBackground: AppSemanticColors.positiveContainer,
                     label: 'Balances',
-                    onTap: () {},
+                    onTap: () =>
+                        Navigator.pushNamed(context, AppRoutes.balances),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),

@@ -18,6 +18,7 @@ import '../../design_system/navigations/app_top_bar.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../router/app_router.dart';
 
 /// SOLO MAQUETA — sin cálculos reales, sin navegación entre tabs, sin
 /// lógica de settlement. Todo hardcodeado igual que en la captura.
@@ -349,8 +350,26 @@ class Balances extends StatelessWidget {
           AppBottomNavItem(icon: Icons.person, label: 'Profile'),
         ],
         currentIndex: 2,
-        onTap: (_) {},
+        onTap: (index) => _onNavTap(context, index),
       ),
     );
+  }
+}
+
+/// Navegación compartida entre tabs — misma lógica que en home.dart y
+/// history.dart. Duplicada por ahora en cada pantalla (es una maqueta).
+void _onNavTap(BuildContext context, int index) {
+  switch (index) {
+    case 0:
+      Navigator.pushReplacementNamed(context, AppRoutes.home);
+      break;
+    case 1:
+      Navigator.pushReplacementNamed(context, AppRoutes.history);
+      break;
+    case 2:
+      Navigator.pushReplacementNamed(context, AppRoutes.balances);
+      break;
+    default:
+      break; // Profile todavía no existe
   }
 }

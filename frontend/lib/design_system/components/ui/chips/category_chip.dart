@@ -46,15 +46,20 @@ class CategoryChip extends StatelessWidget {
     required this.category,
     required this.selected,
     required this.onTap,
+    this.count,
   });
 
   final ExpenseCategory category;
   final bool selected;
   final VoidCallback onTap;
 
+  /// Conteo opcional junto al label, ej. "Food 6", "Transport 3".
+  final int? count;
+
   @override
   Widget build(BuildContext context) {
     final style = _categoryStyles[category]!;
+    final textColor = selected ? Colors.white : AppSemanticColors.slate900;
 
     return GestureDetector(
       onTap: onTap,
@@ -73,12 +78,11 @@ class CategoryChip extends StatelessWidget {
           children: [
             Icon(style.icon, size: 18, color: selected ? Colors.white : style.tint),
             const SizedBox(width: AppSpacing.xs),
-            Text(
-              style.label,
-              style: AppTypography.bodyMd(
-                color: selected ? Colors.white : AppSemanticColors.slate900,
-              ),
-            ),
+            Text(style.label, style: AppTypography.bodyMd(color: textColor)),
+            if (count != null) ...[
+              const SizedBox(width: 4),
+              Text('$count', style: AppTypography.bodySm(color: textColor)),
+            ],
           ],
         ),
       ),

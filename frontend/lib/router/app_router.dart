@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../features/balances/balances.dart';
 import '../features/expense_details/expense_details.dart';
 import '../features/group_details/group_details.dart';
+import '../features/history/history.dart';
 import '../features/home/home.dart';
 import '../features/log_expense/log_expense.dart';
 import '../features/onboarding/onboarding_screen.dart';
@@ -17,6 +18,7 @@ class AppRoutes {
   static const String groupDetails = '/group-details';
   static const String expenseDetails = '/expense-details';
   static const String balances = '/balances';
+  static const String history = '/history';
 }
 
 /// Router sencillo: un mapa de rutas nombradas, sin guards de auth ni
@@ -32,5 +34,6 @@ class AppRouter {
     AppRoutes.groupDetails: (context) => const GroupDetails(),
     AppRoutes.expenseDetails: (context) => const ExpenseDetails(),
     AppRoutes.balances: (context) => const Balances(),
+    AppRoutes.history: (context) => const History(),
   };
 }

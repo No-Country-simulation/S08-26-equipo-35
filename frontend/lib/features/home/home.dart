@@ -228,9 +228,29 @@ class Home extends StatelessWidget {
           AppBottomNavItem(icon: Icons.person, label: 'Profile'),
         ],
         currentIndex: 0,
-        onTap: (_) {},
+        onTap: (index) => _onNavTap(context, index),
       ),
     );
+  }
+}
+
+/// Navegación compartida entre tabs — misma lógica que en history.dart y
+/// balances.dart para que las 4 pestañas se puedan cambiar entre sí.
+/// Duplicada por ahora en cada pantalla (es una maqueta); si agregas más
+/// tabs, vale la pena moverla a un solo lugar común.
+void _onNavTap(BuildContext context, int index) {
+  switch (index) {
+    case 0:
+      Navigator.pushReplacementNamed(context, AppRoutes.home);
+      break;
+    case 1:
+      Navigator.pushReplacementNamed(context, AppRoutes.history);
+      break;
+    case 2:
+      Navigator.pushReplacementNamed(context, AppRoutes.balances);
+      break;
+    default:
+      break; // Profile todavía no existe
   }
 }
 

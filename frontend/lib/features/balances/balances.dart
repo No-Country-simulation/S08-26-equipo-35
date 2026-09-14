@@ -174,7 +174,8 @@ class Balances extends StatelessWidget {
               status: BalanceBadgeStatus.owed,
               onDetailsTap: () {},
               onRemindTap: () {},
-              onRecordPaymentTap: () {},
+              onRecordPaymentTap: () =>
+                  Navigator.pushNamed(context, AppRoutes.markPayment),
             ),
             const SizedBox(height: AppSpacing.sm),
 
@@ -302,7 +303,8 @@ class Balances extends StatelessWidget {
               status: BalanceBadgeStatus.owed,
               onDetailsTap: () {},
               onRemindTap: () {},
-              onRecordPaymentTap: () {},
+              onRecordPaymentTap: () =>
+                  Navigator.pushNamed(context, AppRoutes.markPayment),
             ),
             const SizedBox(height: AppSpacing.sm),
 

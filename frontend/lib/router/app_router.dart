@@ -5,6 +5,7 @@ import '../features/group_details/group_details.dart';
 import '../features/history/history.dart';
 import '../features/home/home.dart';
 import '../features/log_expense/log_expense.dart';
+import '../features/mark_payment/mark_payment.dart';
 import '../features/onboarding/onboarding_screen.dart';
 
 /// Nombres de ruta como constantes — evita strings sueltos repetidos
@@ -19,6 +20,7 @@ class AppRoutes {
   static const String expenseDetails = '/expense-details';
   static const String balances = '/balances';
   static const String history = '/history';
+  static const String markPayment = '/mark-payment';
 }
 
 /// Router sencillo: un mapa de rutas nombradas, sin guards de auth ni
@@ -35,5 +37,6 @@ class AppRouter {
     AppRoutes.expenseDetails: (context) => const ExpenseDetails(),
     AppRoutes.balances: (context) => const Balances(),
     AppRoutes.history: (context) => const History(),
+    AppRoutes.markPayment: (context) => const MarkPayment(),
   };
 }

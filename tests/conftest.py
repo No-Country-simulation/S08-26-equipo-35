@@ -93,14 +93,13 @@ def test_user_token(test_user: User) -> str:
 
 
 @pytest.fixture(scope="function")
-def authenticated_client(client: TestClient, test_user: User, test_user_token: str):
-    def override_get_current_user():
-        return test_user
-
-    app.dependency_overrides[get_current_user] = override_get_current_user
+def authenticated_client(client: TestClient, test_user_token: str):
+    # NO sobrescribir get_current_user: se usa el JWT real
+    # para que los tests con tokens de no-miembros funcionen (403).
+    # get_db ya está sobrescrito en la fixture `client`,
+    # así que get_current_user consultará la DB de test.
     client.headers = {"Authorization": f"Bearer {test_user_token}"}
     yield client
-    app.dependency_overrides.clear()
     client.headers = {}
 
 
@@ -184,7 +183,10 @@ def test_expense(db_session: Session, test_group_with_members: Group, test_user:
         expense_category="Food",
         total_amount=Decimal("100.00"),
         split_type=SplitType.EQUAL,
-        created_at=datetime.utcnow()
+        # 1 minuto en el pasado para que los gastos creados
+        # dentro de los tests (second_expense) sean siempre
+        # más recientes y el orden DESC sea determinista.
+        created_at=datetime.utcnow() - timedelta(minutes=1)
     )
     db_session.add(expense)
     db_session.commit()

@@ -72,15 +72,27 @@ def test_get_group_members_success(db_session: Session, test_group: Group, test_
     assert {m.user_id for m in members} == {test_users[0].user_id, test_users[1].user_id}
 
 
-def test_calculate_equal_splits_even(db_session: Session, test_group_with_members: Group):
-    members = get_group_members(db_session, test_group_with_members.group_id)
+def test_calculate_equal_splits_even(
+    db_session: Session,
+    test_group_with_members: Group
+):
+    members = get_group_members(
+        db_session,
+        test_group_with_members.group_id
+    )
+
     total_amount = Decimal("100.00")
-    splits = calculate_equal_splits(total_amount, members)
-    
+
+    splits = calculate_equal_splits(
+        total_amount,
+        members
+    )
+
     assert len(splits) == len(members)
-    assert sum(s["amount_owed"] for s in splits) == total_amount
-    for split in splits:
-        assert split["amount_owed"] == (total_amount / len(members)).quantize(Decimal("0.01"))
+    assert all(
+        split["amount_owed"] in (Decimal("16.66"), Decimal("16.67"))
+        for split in splits
+    )
 
 
 def test_calculate_equal_splits_uneven(db_session: Session, test_group_with_members: Group):

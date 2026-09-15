@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
+
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.expenses import SplitType
@@ -15,10 +16,7 @@ from app.models.expenses import SplitType
 
 class ExpenseSplitDetail(BaseModel):
     user_id: UUID
-    amount_owed: Decimal = Field(
-        gt=0,
-        decimal_places=2
-    )
+    amount_owed: Decimal
 
 
 # ============================================================

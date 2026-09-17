@@ -1,0 +1,8 @@
+.git
+.gitignore
+.env
+__pycache__/
+env_SplitFlow/
+*.pyc
+README.md
+generate_hash.py

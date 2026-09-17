@@ -19,6 +19,8 @@ class Expense(Base):
     payer_user_id = Column(SQL_UUID(as_uuid=True), ForeignKey('users.user_id'), nullable=False)
     
     title = Column(String(150), nullable=False)
+
+    expense_category = Column(String(100), nullable=False)
     
     # DECIMAL(12,2) se representa como Numeric(12, 2) en SQLAlchemy
     total_amount = Column(Numeric(12, 2), nullable=False)

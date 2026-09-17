@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from app.api.v1.auth import router as auth_router
 from app.api.v1.expenses import router as expenses_router
+from app.api.v1.groups import router as groups_router
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,6 +24,13 @@ app.include_router(
     expenses_router,
     prefix="/api/v1",
     tags=["Expenses"]
+)
+
+#Groups
+app.include_router(
+    groups_router,
+    prefix="/api/v1",
+    tags=["groups"]
 )
 
 # CORS

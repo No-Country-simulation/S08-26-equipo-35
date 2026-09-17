@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy.sql import func
 import enum 
+from sqlalchemy.orm import relationship
 from app.db.base import Base # Asumiendo que usas la misma base que en Users
 
 class GroupStatus(enum.Enum):
@@ -22,3 +23,5 @@ class Group(Base):
     status = Column(SQLEnum(GroupStatus, name="group_status_enum"), nullable=False, default=GroupStatus.ACTIVE)
     
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    members = relationship("GroupMember", back_populates="group")

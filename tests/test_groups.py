@@ -1,6 +1,4 @@
 """
-Tests para app/services/groups.py
-
 Cubre: create_group_service, get_groups_service, get_detailGroup_service, update_group_service
 NO incluye tests de delete_group_service (pendiente, a pedido).
 

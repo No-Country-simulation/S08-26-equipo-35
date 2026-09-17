@@ -1,7 +1,9 @@
 # app/main.py
 from fastapi import FastAPI
 from app.api.v1.auth import router as auth_router
+from app.api.v1.expenses import router as expenses_router
 
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="SplitFlow API",
@@ -9,18 +11,21 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# --> tags=["Auth"]: Agrupa los endpoints en Swagger (/docs) bajo la etiqueta "Auth".
-app.include_router(auth_router, prefix="/api/v1", tags=["Auth"])
+# Auth
+app.include_router(
+    auth_router,
+    prefix="/api/v1",
+    tags=["Auth"]
+)
 
+# Expenses
+app.include_router(
+    expenses_router,
+    prefix="/api/v1",
+    tags=["Expenses"]
+)
 
-#======================================================================================================================
-#======================================================================================================================
-
-
-from fastapi.middleware.cors import CORSMiddleware
-
-
-
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # en desarrollo puedes dejarlo abierto
@@ -28,4 +33,3 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-

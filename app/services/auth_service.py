@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 from app.models.users import User
 from app.schemas.auth import UserRegister, UserLogin
 from app.core.security import hash_password 
+from sqlalchemy import select, update
 
 def register_user_service(db: Session, user_data: UserRegister):
     # 1. Verificar si el email ya está registrado (Evita duplicados)
@@ -54,3 +55,26 @@ def login_user_service(db: Session, email: str, password: str):
         raise HTTPException(status_code=400, detail="Credenciales incorrectas")
     
     return user
+
+
+
+#------------------------------------------------------------------------------------------------------------
+def change_password_service(db: Session, data, current_user):
+    # 1. Verificar contraseña anterior
+    if not verify_password(data.old_password.get_secret_value(), current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
+
+    # 2. Hashear la nueva contraseña
+    hashed_password = hash_password(data.new_password.get_secret_value())
+
+    # 3. Actualizar en DB
+    stmt = update(User).where(User.user_id == current_user.user_id).values(password_hash=hashed_password)
+    db.execute(stmt)
+    db.commit()
+
+    # 4. Recargar el usuario para devolverlo
+    result = db.execute(select(User).where(User.user_id == current_user.user_id))
+    user_db = result.scalars().first()
+
+    return user_db
+

@@ -36,3 +36,20 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 # O el tiempo que hayas definido en la .env
     }
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------
+from app.core.security import get_current_user
+from app.services.auth_service import change_password_service
+from app.schemas.auth import ChangePassword, MessageResponse
+from app.models.users import User
+
+
+@router.put("/change-password",  response_model=MessageResponse, status_code=status.HTTP_200_OK)
+def password_change(
+    data: ChangePassword,                              # ← Nombre correcto del parámetro
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    change_password_service(db, data, current_user) 
+    return {"message": "Update password successful"}

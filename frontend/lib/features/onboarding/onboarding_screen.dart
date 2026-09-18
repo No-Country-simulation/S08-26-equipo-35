@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../design_system/components/ui/avatars/avatar_stack.dart';
 import '../../design_system/components/ui/buttons/app_button.dart';
@@ -8,6 +9,8 @@ import '../../design_system/components/ui/text_fields/app_text_field.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../core/network/api_client.dart';
+import '../auth/data/auth_repository.dart';
 import '../../router/app_router.dart';
 
 /// SOLO MAQUETA — sin controllers, sin onPressed reales, sin navegación.
@@ -122,7 +125,53 @@ class _LogoMark extends StatelessWidget {
   }
 }
 
-class _AuthCard extends StatelessWidget {
+class _AuthCard extends StatefulWidget {
+  @override
+  State<_AuthCard> createState() => _AuthCardState();
+}
+
+class _AuthCardState extends State<_AuthCard> {
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleRegister() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    setState(() => _isLoading = true);
+    try {
+      await AuthRepository.instance.register(
+        name: name,
+        email: email,
+        password: password,
+      );
+      // El registro no devuelve sesión (solo email + created_at), así que
+      // logueamos con las mismas credenciales para obtener el access_token
+      // antes de entrar a Home.
+      await AuthRepository.instance.login(email: email, password: password);
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, AppRoutes.home);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -147,21 +196,40 @@ class _AuthCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           const AppDividerWithLabel(label: 'or with email'),
           const SizedBox(height: AppSpacing.md),
-          const AppTextField(
+          AppTextField(
+            label: 'Full name',
+            hintText: 'Alex Rivera',
+            controller: _nameController,
+            prefixIcon: const Icon(Icons.person_outline),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          AppTextField(
             label: 'Email address',
             hintText: 'alex@example.com',
-            prefixIcon: Icon(Icons.mail_outline),
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            prefixIcon: const Icon(Icons.mail_outline),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          AppTextField(
+            label: 'Password',
+            hintText: '••••••••',
+            controller: _passwordController,
+            obscureText: true,
+            prefixIcon: const Icon(Icons.lock_outline),
           ),
           const SizedBox(height: AppSpacing.md),
           AppButton(
             label: 'Continue',
-            trailingIcon: const Icon(
-              Icons.arrow_forward,
-              color: Colors.white,
-              size: 18,
-            ),
-            onPressed: () =>
-                Navigator.pushReplacementNamed(context, AppRoutes.home),
+            isLoading: _isLoading,
+            trailingIcon: _isLoading
+                ? null
+                : const Icon(
+                    Icons.arrow_forward,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+            onPressed: _isLoading ? null : _handleRegister,
           ),
           const SizedBox(height: AppSpacing.md),
           Text.rich(
@@ -184,6 +252,27 @@ class _AuthCard extends StatelessWidget {
                 ),
                 const TextSpan(
                   text: '. Passwordless login link will be sent to your inbox.',
+                ),
+              ],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text.rich(
+            TextSpan(
+              style: AppTypography.bodySm(color: AppSemanticColors.slate600),
+              children: [
+                const TextSpan(text: 'Already have an account? '),
+                TextSpan(
+                  text: 'Log in',
+                  style: AppTypography.bodySm(
+                    color: AppMd3Colors.primaryContainer,
+                  ).copyWith(fontWeight: FontWeight.w600),
+                  recognizer: TapGestureRecognizer()
+                    ..onTap = () => Navigator.pushReplacementNamed(
+                      context,
+                      AppRoutes.login,
+                    ),
                 ),
               ],
             ),

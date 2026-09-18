@@ -16,6 +16,7 @@ class AppTextField extends StatelessWidget {
     this.controller,
     this.keyboardType,
     this.onChanged,
+    this.obscureText = false,
   });
 
   final String? label;
@@ -24,6 +25,7 @@ class AppTextField extends StatelessWidget {
   final TextEditingController? controller;
   final TextInputType? keyboardType;
   final ValueChanged<String>? onChanged;
+  final bool obscureText;
 
   @override
   Widget build(BuildContext context) {
@@ -31,13 +33,17 @@ class AppTextField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (label != null) ...[
-          Text(label!, style: AppTypography.bodyMd(color: AppSemanticColors.slate900)),
+          Text(
+            label!,
+            style: AppTypography.bodyMd(color: AppSemanticColors.slate900),
+          ),
           const SizedBox(height: AppSpacing.xs),
         ],
         TextField(
           controller: controller,
           keyboardType: keyboardType,
           onChanged: onChanged,
+          obscureText: obscureText,
           style: AppTypography.bodyLg(color: AppSemanticColors.slate900),
           decoration: InputDecoration(
             hintText: hintText,

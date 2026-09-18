@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../features/auth/login_screen.dart';
 import '../features/balances/balances.dart';
 import '../features/expense_details/expense_details.dart';
 import '../features/group_details/group_details.dart';
@@ -14,6 +15,7 @@ class AppRoutes {
   AppRoutes._();
 
   static const String onboarding = '/';
+  static const String login = '/login';
   static const String home = '/home';
   static const String logExpense = '/log-expense';
   static const String groupDetails = '/group-details';
@@ -31,6 +33,7 @@ class AppRouter {
 
   static Map<String, WidgetBuilder> routes = {
     AppRoutes.onboarding: (context) => const OnboardingScreen(),
+    AppRoutes.login: (context) => const LoginScreen(),
     AppRoutes.home: (context) => const Home(),
     AppRoutes.logExpense: (context) => LogExpense(),
     AppRoutes.groupDetails: (context) => const GroupDetails(),

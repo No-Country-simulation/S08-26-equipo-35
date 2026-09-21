@@ -6,8 +6,11 @@ from sqlalchemy import Enum as SQLEnum
 from app.db.base import Base
 
 class SettlementStatus(enum.Enum):
-    CONFIRMED = "CONFIRMED"
     PENDING = "PENDING"
+    PAID = "PAID"
+    # Valor legacy: existia antes del modulo settlements.
+    # Se trata como PAID en toda la logica nueva.
+    CONFIRMED = "CONFIRMED"
 
 class Settlement(Base):
     __tablename__ = 'settlements'

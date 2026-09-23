@@ -1,0 +1,78 @@
+# docker-compose.yml
+# Entorno de desarrollo para SplitFlow: API + PostgreSQL 15 + Redis 7
+# Uso: docker compose up --build
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: splitflow_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-splitflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-splitflow_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-splitflow}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-splitflow} -d ${POSTGRES_DB:-splitflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - splitflow_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: splitflow_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - splitflow_net
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: splitflow_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Sobrescribe DATABASE_URL para apuntar al servicio interno `db`
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-splitflow}:${POSTGRES_PASSWORD:-splitflow_pass}@db:5432/${POSTGRES_DB:-splitflow}
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Hot reload: monta el código local dentro del contenedor
+      - .:/app
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    networks:
+      - splitflow_net
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  splitflow_net:
+    driver: bridge

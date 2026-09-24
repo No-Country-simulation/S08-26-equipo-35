@@ -4,7 +4,7 @@ import '../../../tokens/app_colors.dart';
 import '../../../tokens/app_tokens.dart';
 import '../../../tokens/app_typography.dart';
 
-enum BalanceBadgeStatus { owed, owe, settled }
+enum BalanceBadgeStatus { owed, owe, settled, unknown }
 
 /// Pill de balance: "+$180.00 you are owed" / "-$42.50 you owe" / "settled".
 /// Un widget, tres colores según `status` — mismo criterio que AppButton.
@@ -27,6 +27,10 @@ class BalanceBadge extends StatelessWidget {
       BalanceBadgeStatus.owed => (semantic.positiveContainer, semantic.positiveText),
       BalanceBadgeStatus.owe => (semantic.negativeContainer, semantic.negativeText),
       BalanceBadgeStatus.settled => (AppSemanticColors.slate100, AppSemanticColors.slate600),
+      // Todavía no calculamos el balance real de este grupo (falta la
+      // integración de /expenses) — gris neutro, sin insinuar "a favor",
+      // "en contra" ni "saldado", que serían afirmaciones falsas.
+      BalanceBadgeStatus.unknown => (AppSemanticColors.slate100, AppSemanticColors.slate400),
     };
 
     return Column(

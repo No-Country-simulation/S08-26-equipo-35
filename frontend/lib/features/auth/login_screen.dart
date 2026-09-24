@@ -36,9 +36,7 @@ class LoginScreen extends StatelessWidget {
               Text(
                 'Welcome back',
                 textAlign: TextAlign.center,
-                style: AppTypography.headlineLg(
-                  color: AppSemanticColors.slate900,
-                ),
+                style: AppTypography.headlineLg(color: AppSemanticColors.slate900),
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
@@ -82,13 +80,12 @@ class _LoginCardState extends State<_LoginCard> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+      await AuthRepository.instance.fetchProfile();
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, AppRoutes.home);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -109,10 +106,7 @@ class _LoginCardState extends State<_LoginCard> {
           AppButton(
             label: 'Continue with Google',
             variant: AppButtonVariant.outline,
-            leadingIcon: const Icon(
-              Icons.g_mobiledata,
-              size: 24,
-            ), // placeholder del logo de Google
+            leadingIcon: const Icon(Icons.g_mobiledata, size: 24), // placeholder del logo de Google
             onPressed: () {},
           ),
           const SizedBox(height: AppSpacing.md),
@@ -139,11 +133,7 @@ class _LoginCardState extends State<_LoginCard> {
             isLoading: _isLoading,
             trailingIcon: _isLoading
                 ? null
-                : const Icon(
-                    Icons.arrow_forward,
-                    color: Colors.white,
-                    size: 18,
-                  ),
+                : const Icon(Icons.arrow_forward, color: Colors.white, size: 18),
             onPressed: _isLoading ? null : _handleLogin,
           ),
           const SizedBox(height: AppSpacing.md),
@@ -154,14 +144,10 @@ class _LoginCardState extends State<_LoginCard> {
                 const TextSpan(text: "Don't have an account? "),
                 TextSpan(
                   text: 'Sign up',
-                  style: AppTypography.bodySm(
-                    color: AppMd3Colors.primaryContainer,
-                  ).copyWith(fontWeight: FontWeight.w600),
+                  style: AppTypography.bodySm(color: AppMd3Colors.primaryContainer)
+                      .copyWith(fontWeight: FontWeight.w600),
                   recognizer: TapGestureRecognizer()
-                    ..onTap = () => Navigator.pushReplacementNamed(
-                      context,
-                      AppRoutes.onboarding,
-                    ),
+                    ..onTap = () => Navigator.pushReplacementNamed(context, AppRoutes.onboarding),
                 ),
               ],
             ),

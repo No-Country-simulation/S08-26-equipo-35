@@ -36,9 +36,7 @@ class OnboardingScreen extends StatelessWidget {
               Text(
                 'Welcome to SplitFlow',
                 textAlign: TextAlign.center,
-                style: AppTypography.headlineLg(
-                  color: AppSemanticColors.slate900,
-                ),
+                style: AppTypography.headlineLg(color: AppSemanticColors.slate900),
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
@@ -55,10 +53,7 @@ class OnboardingScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: FeatureCard(
-                      icon: const Icon(
-                        Icons.receipt_long,
-                        color: AppMd3Colors.primaryContainer,
-                      ),
+                      icon: const Icon(Icons.receipt_long, color: AppMd3Colors.primaryContainer),
                       iconBackground: AppMd3Colors.surfaceContainer,
                       title: 'Smart Splitting',
                       description: 'Unequal, percentages, itemized bills',
@@ -67,10 +62,7 @@ class OnboardingScreen extends StatelessWidget {
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: FeatureCard(
-                      icon: const Icon(
-                        Icons.lock_open,
-                        color: AppSemanticColors.positive,
-                      ),
+                      icon: const Icon(Icons.lock_open, color: AppSemanticColors.positive),
                       iconBackground: AppSemanticColors.positiveContainer,
                       title: 'Zero Passwords',
                       description: 'Instant one-tap login magic links',
@@ -101,10 +93,7 @@ class _LogoMark extends StatelessWidget {
             borderRadius: AppRadius.lgRadius,
           ),
           child: Center(
-            child: Text(
-              'img',
-              style: AppTypography.bodySm(color: AppSemanticColors.slate400),
-            ),
+            child: Text('img', style: AppTypography.bodySm(color: AppSemanticColors.slate400)),
           ),
         ),
         Positioned(
@@ -151,22 +140,17 @@ class _AuthCardState extends State<_AuthCard> {
 
     setState(() => _isLoading = true);
     try {
-      await AuthRepository.instance.register(
-        name: name,
-        email: email,
-        password: password,
-      );
+      await AuthRepository.instance.register(name: name, email: email, password: password);
       // El registro no devuelve sesión (solo email + created_at), así que
       // logueamos con las mismas credenciales para obtener el access_token
       // antes de entrar a Home.
       await AuthRepository.instance.login(email: email, password: password);
+      await AuthRepository.instance.fetchProfile();
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, AppRoutes.home);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -187,10 +171,7 @@ class _AuthCardState extends State<_AuthCard> {
           AppButton(
             label: 'Continue with Google',
             variant: AppButtonVariant.outline,
-            leadingIcon: const Icon(
-              Icons.g_mobiledata,
-              size: 24,
-            ), // placeholder del logo de Google
+            leadingIcon: const Icon(Icons.g_mobiledata, size: 24), // placeholder del logo de Google
             onPressed: () {},
           ),
           const SizedBox(height: AppSpacing.md),
@@ -224,11 +205,7 @@ class _AuthCardState extends State<_AuthCard> {
             isLoading: _isLoading,
             trailingIcon: _isLoading
                 ? null
-                : const Icon(
-                    Icons.arrow_forward,
-                    color: Colors.white,
-                    size: 18,
-                  ),
+                : const Icon(Icons.arrow_forward, color: Colors.white, size: 18),
             onPressed: _isLoading ? null : _handleRegister,
           ),
           const SizedBox(height: AppSpacing.md),
@@ -239,16 +216,12 @@ class _AuthCardState extends State<_AuthCard> {
                 const TextSpan(text: 'By continuing, you agree to our '),
                 TextSpan(
                   text: 'Terms',
-                  style: AppTypography.bodySm(
-                    color: AppMd3Colors.primaryContainer,
-                  ),
+                  style: AppTypography.bodySm(color: AppMd3Colors.primaryContainer),
                 ),
                 const TextSpan(text: ' & '),
                 TextSpan(
                   text: 'Privacy Policy',
-                  style: AppTypography.bodySm(
-                    color: AppMd3Colors.primaryContainer,
-                  ),
+                  style: AppTypography.bodySm(color: AppMd3Colors.primaryContainer),
                 ),
                 const TextSpan(
                   text: '. Passwordless login link will be sent to your inbox.',
@@ -265,14 +238,10 @@ class _AuthCardState extends State<_AuthCard> {
                 const TextSpan(text: 'Already have an account? '),
                 TextSpan(
                   text: 'Log in',
-                  style: AppTypography.bodySm(
-                    color: AppMd3Colors.primaryContainer,
-                  ).copyWith(fontWeight: FontWeight.w600),
+                  style: AppTypography.bodySm(color: AppMd3Colors.primaryContainer)
+                      .copyWith(fontWeight: FontWeight.w600),
                   recognizer: TapGestureRecognizer()
-                    ..onTap = () => Navigator.pushReplacementNamed(
-                      context,
-                      AppRoutes.login,
-                    ),
+                    ..onTap = () => Navigator.pushReplacementNamed(context, AppRoutes.login),
                 ),
               ],
             ),
@@ -299,14 +268,8 @@ class _TrustedCommunityCard extends StatelessWidget {
           AppAvatarStack(
             avatars: const [
               AppAvatar(initials: 'JD', backgroundColor: Color(0xFF006C49)),
-              AppAvatar(
-                initials: 'SR',
-                backgroundColor: AppMd3Colors.primaryContainer,
-              ),
-              AppAvatar(
-                initials: 'MK',
-                backgroundColor: AppSemanticColors.negative,
-              ),
+              AppAvatar(initials: 'SR', backgroundColor: AppMd3Colors.primaryContainer),
+              AppAvatar(initials: 'MK', backgroundColor: AppSemanticColors.negative),
             ],
             extraCountLabel: '+3k',
           ),
@@ -315,18 +278,11 @@ class _TrustedCommunityCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Trusted Community',
-                  style: AppTypography.titleMd(
-                    color: AppSemanticColors.slate900,
-                  ),
-                ),
+                Text('Trusted Community', style: AppTypography.titleMd(color: AppSemanticColors.slate900)),
                 const SizedBox(height: AppSpacing.xs2),
                 Text(
                   'Trusted by 120,000+ friends & roommates to split effortlessly.',
-                  style: AppTypography.bodySm(
-                    color: AppSemanticColors.slate600,
-                  ),
+                  style: AppTypography.bodySm(color: AppSemanticColors.slate600),
                 ),
               ],
             ),

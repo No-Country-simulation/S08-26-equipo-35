@@ -1,9 +1,10 @@
 import '../../../core/network/api_client.dart';
 import 'auth_session.dart';
+import 'user_profile.dart';
 
-/// Repositorio de autenticación. Mantiene `register` y `login` juntos
-/// porque el flujo de la app los encadena (registrar y loguear en el
-/// mismo paso) — si crecen mucho, sepáralos en dos archivos.
+/// Repositorio de autenticación. Mantiene `register`, `login` y
+/// `fetchProfile` juntos porque el flujo de la app los encadena — si
+/// crecen mucho, sepáralos en archivos distintos.
 class AuthRepository {
   AuthRepository._();
   static final instance = AuthRepository._();
@@ -34,13 +35,21 @@ class AuthRepository {
 
     final token = response['access_token'] as String?;
     if (token == null) {
-      throw ApiException(
-        0,
-        'La respuesta de login no incluyó un access_token.',
-      );
+      throw ApiException(0, 'La respuesta de login no incluyó un access_token.');
     }
 
-    AuthSession.instance.save(token);
+    AuthSession.instance.saveToken(token);
     return token;
+  }
+
+  /// Trae el perfil del usuario logueado (GET /me) y lo guarda en
+  /// AuthSession — necesitas llamarlo después de login() para tener
+  /// disponible `AuthSession.instance.userId` en el resto de la app (ej.
+  /// para saber si un gasto lo pagaste vos).
+  Future<UserProfile> fetchProfile() async {
+    final response = await ApiClient.get('/me', authenticated: true);
+    final profile = UserProfile.fromJson(response as Map<String, dynamic>);
+    AuthSession.instance.saveProfile(profile);
+    return profile;
   }
 }

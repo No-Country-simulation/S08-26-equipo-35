@@ -35,8 +35,14 @@ class AppRouter {
     AppRoutes.onboarding: (context) => const OnboardingScreen(),
     AppRoutes.login: (context) => const LoginScreen(),
     AppRoutes.home: (context) => const Home(),
-    AppRoutes.logExpense: (context) => LogExpense(),
-    AppRoutes.groupDetails: (context) => const GroupDetails(),
+    AppRoutes.logExpense: (context) {
+      final groupId = ModalRoute.of(context)!.settings.arguments as String;
+      return LogExpense(groupId: groupId);
+    },
+    AppRoutes.groupDetails: (context) {
+      final groupId = ModalRoute.of(context)!.settings.arguments as String;
+      return GroupDetails(groupId: groupId);
+    },
     AppRoutes.expenseDetails: (context) => const ExpenseDetails(),
     AppRoutes.balances: (context) => const Balances(),
     AppRoutes.history: (context) => const History(),

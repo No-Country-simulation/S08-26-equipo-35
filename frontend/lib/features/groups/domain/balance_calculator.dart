@@ -15,18 +15,30 @@ double calculateNetBalance({
 }) {
   double net = 0;
   for (final expense in expenses) {
-    final myShare = _resolveMyShare(expense, myUserId, memberCount);
-    final myContribution = expense.payerUserId == myUserId ? expense.totalAmount : 0.0;
-    net += myContribution - myShare;
+    net += myNetForExpense(expense, myUserId, memberCount);
   }
   return net;
 }
 
-double _resolveMyShare(Expense expense, String myUserId, int memberCount) {
+/// Cuánto te afecta UN gasto puntual: positivo si te deben (lo pagaste y
+/// otros tenían que aportar su parte), negativo si a vos te tocaba pagar
+/// tu parte. Expuesto aparte de calculateNetBalance para poder mostrar el
+/// estado (+/-) de cada fila de gasto individualmente, no solo el total.
+double myNetForExpense(Expense expense, String myUserId, int memberCount) {
+  final myShare = myShareForExpense(expense, myUserId, memberCount);
+  final myContribution = expense.payerUserId == myUserId
+      ? expense.totalAmount
+      : 0.0;
+  return myContribution - myShare;
+}
+
+double myShareForExpense(Expense expense, String myUserId, int memberCount) {
   for (final split in expense.splits) {
     if (split.userId == myUserId) return split.amountOwed;
   }
-  if (expense.splits.isEmpty && expense.splitType == SplitType.equal && memberCount > 0) {
+  if (expense.splits.isEmpty &&
+      expense.splitType == SplitType.equal &&
+      memberCount > 0) {
     return expense.totalAmount / memberCount;
   }
   return 0;

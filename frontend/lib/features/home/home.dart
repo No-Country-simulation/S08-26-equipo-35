@@ -130,22 +130,21 @@ class _HomeState extends State<Home> {
         ),
         trailing: const AppAvatar(initials: 'AX', size: 36),
       ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.marginMobile,
-              vertical: AppSpacing.md,
-            ),
-            child: FutureBuilder<_HomeData>(
-              future: _dataFuture,
-              builder: (context, snapshot) {
-                final loading =
-                    snapshot.connectionState != ConnectionState.done;
-                final hasError = snapshot.hasError;
-                final data = snapshot.data;
+      body: FutureBuilder<_HomeData>(
+        future: _dataFuture,
+        builder: (context, snapshot) {
+          final loading = snapshot.connectionState != ConnectionState.done;
+          final hasError = snapshot.hasError;
+          final data = snapshot.data;
 
-                return Column(
+          return Stack(
+            children: [
+              SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.marginMobile,
+                  vertical: AppSpacing.md,
+                ),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _SummaryCard(
@@ -223,22 +222,37 @@ class _HomeState extends State<Home> {
                     ),
                     const SizedBox(height: 80),
                   ],
-                );
-              },
-            ),
-          ),
-          Positioned(
-            right: AppSpacing.marginMobile,
-            bottom: AppSpacing.md,
-            child: AppButton(
-              label: 'Add Expense',
-              leadingIcon: const Icon(Icons.add, color: Colors.white, size: 18),
-              expand: false,
-              onPressed: () =>
-                  Navigator.pushNamed(context, AppRoutes.logExpense),
-            ),
-          ),
-        ],
+                ),
+              ),
+              Positioned(
+                right: AppSpacing.marginMobile,
+                bottom: AppSpacing.md,
+                child: AppButton(
+                  label: 'Add Expense',
+                  leadingIcon: const Icon(
+                    Icons.add,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  expand: false,
+                  // Simplificación temporal: usa el primer grupo de la
+                  // lista porque todavía no hay un selector de grupo ni
+                  // un punto de entrada dentro de un grupo específico.
+                  onPressed: (data == null || data.groups.isEmpty)
+                      ? null
+                      : () async {
+                          final created = await Navigator.pushNamed(
+                            context,
+                            AppRoutes.logExpense,
+                            arguments: data.groups.first.group.groupId,
+                          );
+                          if (created == true) _retry();
+                        },
+                ),
+              ),
+            ],
+          );
+        },
       ),
       bottomNavigationBar: AppBottomNavBar(
         items: const [
@@ -302,7 +316,11 @@ class _HomeState extends State<Home> {
         color: AppSemanticColors.slate400,
       ),
       metaText: metaText,
-      onTap: () => Navigator.pushNamed(context, AppRoutes.groupDetails),
+      onTap: () => Navigator.pushNamed(
+        context,
+        AppRoutes.groupDetails,
+        arguments: summary.group.groupId,
+      ).then((_) => _retry()),
     );
   }
 }

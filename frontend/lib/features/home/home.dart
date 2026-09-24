@@ -6,9 +6,9 @@ import '../../design_system/components/ui/buttons/app_button.dart';
 import '../../design_system/components/ui/cards/group_card.dart';
 import '../../design_system/components/ui/chips/app_filter_chip.dart';
 import '../../design_system/components/ui/icon_boxes/app_icon_box.dart';
-import '../../design_system/components/ui/rows/meta_row.dart';
-import '../../design_system/navigation/app_bottom_nav_bar.dart';
-import '../../design_system/navigation/app_top_bar.dart';
+import '../../design_system/components/ui/row/meta_row.dart';
+import '../../design_system/navigations/app_bottom_nav_bar.dart';
+import '../../design_system/navigations/app_top_bar.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
@@ -33,6 +33,7 @@ class _GroupSummary {
 
   final Group group;
   final int memberCount;
+
   /// null = no se pudo calcular (ej. no hay userId de sesión disponible) —
   /// distinto de 0, que significa "saldado de verdad".
   final double? netBalance;
@@ -102,12 +103,14 @@ class _HomeState extends State<Home> {
         if (last == null || e.createdAt.isAfter(last.createdAt)) last = e;
       }
 
-      summaries.add(_GroupSummary(
-        group: group,
-        memberCount: detail.members.length,
-        netBalance: net,
-        lastExpense: last,
-      ));
+      summaries.add(
+        _GroupSummary(
+          group: group,
+          memberCount: detail.members.length,
+          netBalance: net,
+          lastExpense: last,
+        ),
+      );
     }
 
     return _HomeData(groups: summaries, overallNet: overall);
@@ -137,7 +140,8 @@ class _HomeState extends State<Home> {
             child: FutureBuilder<_HomeData>(
               future: _dataFuture,
               builder: (context, snapshot) {
-                final loading = snapshot.connectionState != ConnectionState.done;
+                final loading =
+                    snapshot.connectionState != ConnectionState.done;
                 final hasError = snapshot.hasError;
                 final data = snapshot.data;
 
@@ -154,13 +158,29 @@ class _HomeState extends State<Home> {
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          AppFilterChip(label: 'All', selected: true, onTap: () {}),
+                          AppFilterChip(
+                            label: 'All',
+                            selected: true,
+                            onTap: () {},
+                          ),
                           const SizedBox(width: AppSpacing.xs),
-                          AppFilterChip(label: 'Trips', selected: false, onTap: () {}),
+                          AppFilterChip(
+                            label: 'Trips',
+                            selected: false,
+                            onTap: () {},
+                          ),
                           const SizedBox(width: AppSpacing.xs),
-                          AppFilterChip(label: 'Apartment', selected: false, onTap: () {}),
+                          AppFilterChip(
+                            label: 'Apartment',
+                            selected: false,
+                            onTap: () {},
+                          ),
                           const SizedBox(width: AppSpacing.xs),
-                          AppFilterChip(label: 'Social', selected: false, onTap: () {}),
+                          AppFilterChip(
+                            label: 'Social',
+                            selected: false,
+                            onTap: () {},
+                          ),
                         ],
                       ),
                     ),
@@ -179,7 +199,10 @@ class _HomeState extends State<Home> {
                         title: 'Active Groups',
                         count: data.groups.length,
                         trailing: IconButton(
-                          icon: const Icon(Icons.swap_vert, color: AppMd3Colors.primaryContainer),
+                          icon: const Icon(
+                            Icons.swap_vert,
+                            color: AppMd3Colors.primaryContainer,
+                          ),
                           onPressed: () {},
                         ),
                       ),
@@ -191,7 +214,10 @@ class _HomeState extends State<Home> {
                     ],
                     const SizedBox(height: AppSpacing.lg),
                     AppInfoBanner(
-                      icon: const Icon(Icons.celebration, color: AppMd3Colors.primaryContainer),
+                      icon: const Icon(
+                        Icons.celebration,
+                        color: AppMd3Colors.primaryContainer,
+                      ),
                       title: "You're in good shape!",
                       description: 'No urgent settlements pending today.',
                     ),
@@ -208,7 +234,8 @@ class _HomeState extends State<Home> {
               label: 'Add Expense',
               leadingIcon: const Icon(Icons.add, color: Colors.white, size: 18),
               expand: false,
-              onPressed: () => Navigator.pushNamed(context, AppRoutes.logExpense),
+              onPressed: () =>
+                  Navigator.pushNamed(context, AppRoutes.logExpense),
             ),
           ),
         ],
@@ -217,7 +244,10 @@ class _HomeState extends State<Home> {
         items: const [
           AppBottomNavItem(icon: Icons.groups, label: 'Groups'),
           AppBottomNavItem(icon: Icons.receipt_long, label: 'Activity'),
-          AppBottomNavItem(icon: Icons.account_balance_wallet, label: 'Balances'),
+          AppBottomNavItem(
+            icon: Icons.account_balance_wallet,
+            label: 'Balances',
+          ),
           AppBottomNavItem(icon: Icons.person, label: 'Profile'),
         ],
         currentIndex: 0,
@@ -259,12 +289,18 @@ class _HomeState extends State<Home> {
       icon: const Icon(Icons.groups, color: AppMd3Colors.primaryContainer),
       iconBackground: AppMd3Colors.surfaceContainer,
       title: summary.group.groupName,
-      memberAvatars: const [], // sin fotos/nombres: no hay endpoint de usuarios por id
-      memberCountLabel: '${summary.memberCount} member${summary.memberCount == 1 ? '' : 's'}',
+      memberAvatars:
+          const [], // sin fotos/nombres: no hay endpoint de usuarios por id
+      memberCountLabel:
+          '${summary.memberCount} member${summary.memberCount == 1 ? '' : 's'}',
       balanceAmountLabel: amountLabel,
       balanceStatus: status,
       balanceCaption: caption,
-      metaIcon: const Icon(Icons.receipt_long, size: 16, color: AppSemanticColors.slate400),
+      metaIcon: const Icon(
+        Icons.receipt_long,
+        size: 16,
+        color: AppSemanticColors.slate400,
+      ),
       metaText: metaText,
       onTap: () => Navigator.pushNamed(context, AppRoutes.groupDetails),
     );
@@ -282,7 +318,11 @@ class _ErrorState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
       child: Column(
         children: [
-          const Icon(Icons.error_outline, color: AppSemanticColors.negativeText, size: 32),
+          const Icon(
+            Icons.error_outline,
+            color: AppSemanticColors.negativeText,
+            size: 32,
+          ),
           const SizedBox(height: AppSpacing.xs),
           Text(
             'No pudimos cargar tus grupos.',
@@ -305,7 +345,11 @@ class _EmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
       child: Column(
         children: [
-          const Icon(Icons.groups_outlined, color: AppSemanticColors.slate400, size: 32),
+          const Icon(
+            Icons.groups_outlined,
+            color: AppSemanticColors.slate400,
+            size: 32,
+          ),
           const SizedBox(height: AppSpacing.xs),
           Text(
             'Todavía no tienes grupos. Crea el primero para empezar.',
@@ -321,7 +365,11 @@ class _EmptyState extends StatelessWidget {
 /// Tarjeta de resumen superior. Muestra "—" mientras carga; una vez que
 /// `overallNet` llega, ya es el balance real sumado de todos los grupos.
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.isLoading, this.overallNet, this.groupCount});
+  const _SummaryCard({
+    required this.isLoading,
+    this.overallNet,
+    this.groupCount,
+  });
 
   final bool isLoading;
   final double? overallNet;
@@ -357,7 +405,10 @@ class _SummaryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.5),
                     borderRadius: AppRadius.fullRadius,
@@ -371,12 +422,22 @@ class _SummaryCard extends StatelessWidget {
                         color: AppSemanticColors.positiveText,
                       ),
                       const SizedBox(width: 4),
-                      Text(statusLabel, style: AppTypography.bodySm(color: AppSemanticColors.positiveText)),
+                      Text(
+                        statusLabel,
+                        style: AppTypography.bodySm(
+                          color: AppSemanticColors.positiveText,
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                Text(amountLabel, style: AppTypography.displayCurrency(color: AppSemanticColors.slate900)),
+                Text(
+                  amountLabel,
+                  style: AppTypography.displayCurrency(
+                    color: AppSemanticColors.slate900,
+                  ),
+                ),
                 const SizedBox(height: AppSpacing.xs2),
                 Row(
                   children: [
@@ -389,7 +450,12 @@ class _SummaryCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: AppSpacing.xs2),
-                    Text(countLabel, style: AppTypography.bodySm(color: AppSemanticColors.slate600)),
+                    Text(
+                      countLabel,
+                      style: AppTypography.bodySm(
+                        color: AppSemanticColors.slate600,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -427,7 +493,10 @@ class _NewGroupAction extends StatelessWidget {
             child: const Icon(Icons.add, color: Colors.white),
           ),
           const SizedBox(height: AppSpacing.xs2),
-          Text('New Group', style: AppTypography.labelMd(color: AppSemanticColors.slate900)),
+          Text(
+            'New Group',
+            style: AppTypography.labelMd(color: AppSemanticColors.slate900),
+          ),
         ],
       ),
     );

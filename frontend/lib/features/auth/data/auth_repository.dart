@@ -52,4 +52,29 @@ class AuthRepository {
     AuthSession.instance.saveProfile(profile);
     return profile;
   }
+
+  Future<UserProfile> updateProfile({String? name, String? email}) async {
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if (email != null) body['email'] = email;
+    final response = await ApiClient.patch('/me', body, authenticated: true);
+    final profile = UserProfile.fromJson(response);
+    AuthSession.instance.saveProfile(profile);
+    return profile;
+  }
+
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    await ApiClient.put('/change-password', {
+      'old_password': oldPassword,
+      'new_password': newPassword,
+    }, authenticated: true);
+  }
+
+  Future<void> deleteAccount() async {
+    await ApiClient.delete('/me', authenticated: true);
+    AuthSession.instance.clear();
+  }
 }

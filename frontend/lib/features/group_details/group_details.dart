@@ -15,6 +15,8 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../core/utils/date_format.dart';
+import '../../core/network/api_client.dart';
+import '../../design_system/components/ui/text_fields/app_text_field.dart';
 import '../../router/app_router.dart';
 import '../auth/data/auth_session.dart';
 import '../expenses/data/expense.dart';
@@ -102,6 +104,17 @@ class _GroupDetailsState extends State<GroupDetails> {
   }
 
   void _retry() => setState(() => _future = _load());
+
+  Future<void> _showRenameDialog(GroupDetail detail) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => _RenameGroupDialog(detail: detail),
+    );
+
+    if (saved == true && mounted) {
+      _retry();
+    }
+  }
 
   String _displayName(String userId) {
     if (userId == AuthSession.instance.userId)
@@ -222,8 +235,7 @@ class _GroupDetailsState extends State<GroupDetails> {
                     const SizedBox(height: AppSpacing.md),
                     AppEditableTitle(
                       title: detail.groupName,
-                      onEdit:
-                          () {}, // Sin conectar: PATCH /{id_group} existe pero no se usa en este paso.
+                      onEdit: () => _showRenameDialog(detail),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -483,7 +495,112 @@ class _GroupDetailsState extends State<GroupDetails> {
       totalAmountLabel: '\$${expense.totalAmount.toStringAsFixed(2)}',
       statusLabel: statusLabel,
       status: status,
-      onTap: () {}, // Expense Details todavía no está conectado a datos reales.
+      onTap: () {
+        Navigator.pushNamed(
+          context,
+          AppRoutes.expenseDetails,
+          arguments: expense.expenseId,
+        );
+      },
+    );
+  }
+}
+
+class _RenameGroupDialog extends StatefulWidget {
+  const _RenameGroupDialog({required this.detail});
+
+  final GroupDetail detail;
+
+  @override
+  State<_RenameGroupDialog> createState() => _RenameGroupDialogState();
+}
+
+class _RenameGroupDialogState extends State<_RenameGroupDialog> {
+  late final TextEditingController _nameController;
+  bool _isSubmitting = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.detail.groupName);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleSave() async {
+    final newName = _nameController.text.trim();
+
+    if (newName.isEmpty || newName == widget.detail.groupName) {
+      Navigator.pop(context, false);
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _error = null;
+    });
+
+    try {
+      await GroupRepository.instance.updateGroupName(widget.detail.groupId, newName);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _isSubmitting = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'No se pudo conectar con el servidor.';
+        _isSubmitting = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Rename group'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppTextField(
+            label: 'Group name',
+            controller: _nameController,
+            prefixIcon: const Icon(Icons.edit),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              _error!,
+              style: AppTypography.bodySm(color: AppSemanticColors.negativeText),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: _isSubmitting ? null : _handleSave,
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Save'),
+        ),
+      ],
     );
   }
 }

@@ -10,10 +10,33 @@ class ExpenseRepository {
       '/groups/$groupId/expenses',
       authenticated: true,
     );
-    final list = response as List<dynamic>;
-    return list
+    if (response is! List<dynamic>) {
+      return [];
+    }
+    return response
         .map((item) => Expense.fromJson(item as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<Expense> getExpense(String expenseId) async {
+    final response = await ApiClient.get('/expenses/$expenseId', authenticated: true);
+    return Expense.fromJson(response);
+  }
+
+  Future<Expense> updateExpense({
+    required String expenseId,
+    String? title,
+    double? totalAmount,
+  }) async {
+    final body = <String, dynamic>{};
+    if (title != null) body['title'] = title;
+    if (totalAmount != null) body['total_amount'] = totalAmount;
+    final response = await ApiClient.put('/expenses/$expenseId', body, authenticated: true);
+    return Expense.fromJson(response);
+  }
+
+  Future<void> deleteExpense(String expenseId) async {
+    await ApiClient.delete('/expenses/$expenseId', authenticated: true);
   }
 
   /// Crea un gasto. `splits` siempre se manda explícito (aunque sea

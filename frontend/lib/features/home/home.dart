@@ -7,11 +7,13 @@ import '../../design_system/components/ui/cards/group_card.dart';
 import '../../design_system/components/ui/chips/app_filter_chip.dart';
 import '../../design_system/components/ui/icon_boxes/app_icon_box.dart';
 import '../../design_system/components/ui/row/meta_row.dart';
+import '../../design_system/components/ui/text_fields/app_text_field.dart';
 import '../../design_system/navigations/app_bottom_nav_bar.dart';
 import '../../design_system/navigations/app_top_bar.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../core/network/api_client.dart';
 import '../../router/app_router.dart';
 import '../auth/data/auth_session.dart';
 import '../expenses/data/expense.dart';
@@ -68,6 +70,17 @@ class _HomeState extends State<Home> {
     });
   }
 
+  Future<void> _showCreateGroupDialog() async {
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (context) => const _CreateGroupDialog(),
+    );
+
+    if (created == true && mounted) {
+      _retry();
+    }
+  }
+
   /// Trae los grupos y, para cada uno, su detalle (miembros) y sus gastos,
   /// y calcula el balance. Se hace secuencial (grupo por grupo) en vez de
   /// todo en paralelo para no saturar de golpe un backend gratuito de
@@ -81,36 +94,46 @@ class _HomeState extends State<Home> {
     double? overall = myUserId == null ? null : 0;
 
     for (final group in groups) {
-      final results = await Future.wait([
-        GroupRepository.instance.groupDetail(group.groupId),
-        ExpenseRepository.instance.listGroupExpenses(group.groupId),
-      ]);
-      final detail = results[0] as GroupDetail;
-      final expenses = results[1] as List<Expense>;
+      try {
+        final results = await Future.wait([
+          GroupRepository.instance.groupDetail(group.groupId),
+          ExpenseRepository.instance.listGroupExpenses(group.groupId),
+        ]);
+        final detail = results[0] as GroupDetail;
+        final expenses = results[1] as List<Expense>;
 
-      double? net;
-      if (myUserId != null) {
-        net = calculateNetBalance(
-          expenses: expenses,
-          myUserId: myUserId,
-          memberCount: detail.members.length,
+        double? net;
+        if (myUserId != null) {
+          net = calculateNetBalance(
+            expenses: expenses,
+            myUserId: myUserId,
+            memberCount: detail.members.length,
+          );
+          overall = (overall ?? 0) + net;
+        }
+
+        Expense? last;
+        for (final e in expenses) {
+          if (last == null || e.createdAt.isAfter(last.createdAt)) last = e;
+        }
+
+        summaries.add(
+          _GroupSummary(
+            group: group,
+            memberCount: detail.members.length,
+            netBalance: net,
+            lastExpense: last,
+          ),
         );
-        overall = (overall ?? 0) + net;
+      } catch (_) {
+        summaries.add(
+          _GroupSummary(
+            group: group,
+            memberCount: 0,
+            netBalance: null,
+          ),
+        );
       }
-
-      Expense? last;
-      for (final e in expenses) {
-        if (last == null || e.createdAt.isAfter(last.createdAt)) last = e;
-      }
-
-      summaries.add(
-        _GroupSummary(
-          group: group,
-          memberCount: detail.members.length,
-          netBalance: net,
-          lastExpense: last,
-        ),
-      );
     }
 
     return _HomeData(groups: summaries, overallNet: overall);
@@ -151,6 +174,7 @@ class _HomeState extends State<Home> {
                       isLoading: loading,
                       overallNet: data?.overallNet,
                       groupCount: data?.groups.length,
+                      onNewGroup: () => _showCreateGroupDialog(),
                     ),
                     const SizedBox(height: AppSpacing.xl),
                     SingleChildScrollView(
@@ -387,11 +411,13 @@ class _SummaryCard extends StatelessWidget {
     required this.isLoading,
     this.overallNet,
     this.groupCount,
+    this.onNewGroup,
   });
 
   final bool isLoading;
   final double? overallNet;
   final int? groupCount;
+  final VoidCallback? onNewGroup;
 
   @override
   Widget build(BuildContext context) {
@@ -480,7 +506,7 @@ class _SummaryCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSpacing.sm),
-          const _NewGroupAction(),
+          _NewGroupAction(onTap: onNewGroup),
         ],
       ),
     );
@@ -488,34 +514,39 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _NewGroupAction extends StatelessWidget {
-  const _NewGroupAction();
+  const _NewGroupAction({this.onTap});
+
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.6),
-        borderRadius: AppRadius.lgRadius,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: const BoxDecoration(
-              color: AppMd3Colors.primaryContainer,
-              shape: BoxShape.circle,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.6),
+          borderRadius: AppRadius.lgRadius,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(
+                color: AppMd3Colors.primaryContainer,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.add, color: Colors.white),
             ),
-            child: const Icon(Icons.add, color: Colors.white),
-          ),
-          const SizedBox(height: AppSpacing.xs2),
-          Text(
-            'New Group',
-            style: AppTypography.labelMd(color: AppSemanticColors.slate900),
-          ),
-        ],
+            const SizedBox(height: AppSpacing.xs2),
+            Text(
+              'New Group',
+              style: AppTypography.labelMd(color: AppSemanticColors.slate900),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -533,6 +564,98 @@ void _onNavTap(BuildContext context, int index) {
       Navigator.pushReplacementNamed(context, AppRoutes.balances);
       break;
     default:
-      break; // Profile todavía no existe
+      Navigator.pushReplacementNamed(context, AppRoutes.profile);
+      break;
+  }
+}
+
+class _CreateGroupDialog extends StatefulWidget {
+  const _CreateGroupDialog();
+
+  @override
+  State<_CreateGroupDialog> createState() => _CreateGroupDialogState();
+}
+
+class _CreateGroupDialogState extends State<_CreateGroupDialog> {
+  final _nameController = TextEditingController();
+  bool _isSubmitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleCreate() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Please enter a group name.');
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _error = null;
+    });
+
+    try {
+      await GroupRepository.instance.createGroup(name);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _isSubmitting = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'No se pudo conectar con el servidor.';
+        _isSubmitting = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('New Group'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppTextField(
+            label: 'Group name',
+            hintText: 'e.g. Trip to Barcelona',
+            controller: _nameController,
+            prefixIcon: const Icon(Icons.group_add),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              _error!,
+              style: AppTypography.bodySm(color: AppSemanticColors.negativeText),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: _isSubmitting ? null : _handleCreate,
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Create'),
+        ),
+      ],
+    );
   }
 }

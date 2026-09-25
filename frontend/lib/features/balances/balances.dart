@@ -372,6 +372,7 @@ void _onNavTap(BuildContext context, int index) {
       Navigator.pushReplacementNamed(context, AppRoutes.balances);
       break;
     default:
-      break; // Profile todavía no existe
+      Navigator.pushReplacementNamed(context, AppRoutes.profile);
+      break;
   }
 }

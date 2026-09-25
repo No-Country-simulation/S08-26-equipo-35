@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
@@ -26,6 +27,8 @@ class ApiException implements Exception {
 /// reintentos — agrégalos aquí cuando los necesites, en un solo lugar.
 class ApiClient {
   ApiClient._();
+
+  static const _timeout = Duration(seconds: 30);
 
   static String get _baseUrl {
     final url = dotenv.env['API_URL'];
@@ -57,7 +60,7 @@ class ApiClient {
   static Future<dynamic> get(String path, {bool authenticated = false}) async {
     late final http.Response response;
     try {
-      response = await http.get(_uri(path), headers: _headers(authenticated: authenticated));
+      response = await http.get(_uri(path), headers: _headers(authenticated: authenticated)).timeout(_timeout);
     } catch (_) {
       throw ApiException(0, 'No se pudo conectar con el servidor.');
     }
@@ -91,7 +94,7 @@ class ApiClient {
         _uri(path),
         headers: _headers(authenticated: authenticated),
         body: jsonEncode(body),
-      );
+      ).timeout(_timeout);
     } catch (_) {
       throw ApiException(0, 'No se pudo conectar con el servidor.');
     }
@@ -112,6 +115,95 @@ class ApiClient {
     }
 
     return decoded;
+  }
+
+  static Future<Map<String, dynamic>> put(
+    String path,
+    Map<String, dynamic> body, {
+    bool authenticated = false,
+  }) async {
+    late final http.Response response;
+    try {
+      response = await http.put(
+        _uri(path),
+        headers: _headers(authenticated: authenticated),
+        body: jsonEncode(body),
+      ).timeout(_timeout);
+    } catch (_) {
+      throw ApiException(0, 'No se pudo conectar con el servidor.');
+    }
+
+    final isSuccess = response.statusCode >= 200 && response.statusCode < 300;
+
+    Map<String, dynamic> decoded = {};
+    if (response.body.isNotEmpty) {
+      try {
+        decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {}
+    }
+
+    if (!isSuccess) {
+      throw _buildException(response.statusCode, decoded);
+    }
+
+    return decoded;
+  }
+
+  static Future<Map<String, dynamic>> patch(
+    String path,
+    Map<String, dynamic> body, {
+    bool authenticated = false,
+  }) async {
+    late final http.Response response;
+    try {
+      response = await http.patch(
+        _uri(path),
+        headers: _headers(authenticated: authenticated),
+        body: jsonEncode(body),
+      ).timeout(_timeout);
+    } catch (_) {
+      throw ApiException(0, 'No se pudo conectar con el servidor.');
+    }
+
+    final isSuccess = response.statusCode >= 200 && response.statusCode < 300;
+
+    Map<String, dynamic> decoded = {};
+    if (response.body.isNotEmpty) {
+      try {
+        decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {}
+    }
+
+    if (!isSuccess) {
+      throw _buildException(response.statusCode, decoded);
+    }
+
+    return decoded;
+  }
+
+  static Future<dynamic> delete(String path, {bool authenticated = false}) async {
+    late final http.Response response;
+    try {
+      response = await http.delete(
+        _uri(path),
+        headers: _headers(authenticated: authenticated),
+      ).timeout(_timeout);
+    } catch (_) {
+      throw ApiException(0, 'No se pudo conectar con el servidor.');
+    }
+
+    final isSuccess = response.statusCode >= 200 && response.statusCode < 300;
+    if (!isSuccess) {
+      Map<String, dynamic> decoded = {};
+      if (response.body.isNotEmpty) {
+        try {
+          decoded = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (_) {}
+      }
+      throw _buildException(response.statusCode, decoded);
+    }
+
+    return null;
   }
 
   /// Convierte el body de error a un ApiException legible. Soporta tres

@@ -86,6 +86,11 @@ class _LoginCardState extends State<_LoginCard> {
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo conectar con el servidor.')),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

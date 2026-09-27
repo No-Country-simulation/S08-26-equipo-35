@@ -20,7 +20,7 @@ from app.services.groups import update_group_service
 
 
 
-@router.post("/create", response_model=GroupResponse, status_code=201)
+@router.post("/groups/create", response_model=GroupResponse, status_code=201)
 def create_group(
     group_data: GroupCreate,
     current_user: User = Depends(get_current_user),  
@@ -32,7 +32,7 @@ def create_group(
 #------------------------------------------------------------------------------------------------------------------------------
 from app.services.groups import get_groups_service
 
-@router.get("/list", response_model=list[GroupResponse], status_code=200)
+@router.get("/groups/list", response_model=list[GroupResponse], status_code=200)
 def list_groups(
 	db:Session=Depends(get_db),
 	current_user: User=Depends(get_current_user)
@@ -46,14 +46,14 @@ def list_groups(
 #------------------------------------------------------------------------------------------------------------------------
 from app.services.groups import get_detailGroup_service
 
-@router.get("/detail/{id_group}", response_model=DetailGroupResponse, status_code=200)
+@router.get("/groups/detail/{id_group}", response_model=DetailGroupResponse, status_code=200)
 def group_detail(
 	id_group:UUID,
 	db: Session=Depends(get_db),
 	current_user: User=Depends(get_current_user)
 	):
 
-	detail_group= get_detailGroup_service(db, id_group)
+	detail_group= get_detailGroup_service(db, id_group, current_user)
 	return detail_group
 
 
@@ -61,23 +61,23 @@ def group_detail(
 #----------------------------------------------------------------------------------------------------------------------------
 from app.services.groups import update_group_service
 
-@router.patch("/{id_group}", response_model=UpdateGroupResponse, status_code=200)
+@router.patch("/groups/{id_group}", response_model=UpdateGroupResponse, status_code=200)
 def update_group(
 	id_group:UUID,
 	data_group:UpdateGroup,
 	db:Session=Depends(get_db),
-	current_user:str=Depends(get_current_user)
+	current_user:User=Depends(get_current_user)
 	):
 
 
-	group_update= update_group_service(id_group, data_group, db)
+	group_update= update_group_service(id_group, data_group, db, current_user)
 	return group_update
 
 
 #----------------------------------------------------------------------------------------------------------------------------
 from app.services.groups import delete_group_service
 
-@router.delete("/{id_group}", status_code=204)
+@router.delete("/groups/{id_group}", status_code=204)
 def delete_group(id_group:UUID, db:Session=Depends(get_db), current_user:User=Depends(get_current_user)):
-	group_delete= delete_group_service(id_group, db)
+	group_delete= delete_group_service(id_group, db, current_user)
 	return group_delete

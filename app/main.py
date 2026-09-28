@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.api.v1.auth import router as auth_router
 from app.api.v1.expenses import router as expenses_router
 from app.api.v1.groups import router as groups_router
+from app.api.v1.settlements import router as settlements_router
 from app.api.v1.users import router as users_router
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,6 +40,13 @@ app.include_router(
     groups_router,
     prefix="/api/v1",
     tags=["Groups"]
+)
+
+# Settlements
+app.include_router(
+    settlements_router,
+    prefix="/api/v1",
+    tags=["Settlements"]
 )
 
 # CORS

@@ -258,6 +258,79 @@ def list_payments(db: Session, group_id: UUID) -> list[Settlement]:
     )
 
 
+def _parse_status_filter(status_filter: list[str] | str | None) -> list[SettlementStatus] | None:
+    """Normaliza filtro de estado a enums. Acepta PENDING/PAID/CANCELLED/CONFIRMED."""
+    if status_filter is None:
+        return None
+    values = [status_filter] if isinstance(status_filter, str) else list(status_filter)
+    if not values:
+        return None
+    parsed: list[SettlementStatus] = []
+    for raw in values:
+        key = str(raw).strip().upper()
+        try:
+            parsed.append(SettlementStatus[key])
+        except KeyError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Estado de pago invalido: {raw}. Use PENDING, PAID o CANCELLED",
+            )
+    return parsed
+
+
+def list_payments_filtered(
+    db: Session,
+    group_id: UUID,
+    status_filter: list[str] | str | None = None,
+    payer_id: UUID | None = None,
+    receiver_id: UUID | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[Settlement]:
+    """Historial de pagos con filtros y paginacion."""
+    get_group_or_404(db, group_id)
+    limit = max(1, min(int(limit), 100))
+    offset = max(0, int(offset))
+
+    query = db.query(Settlement).filter(Settlement.group_id == group_id)
+
+    statuses = _parse_status_filter(status_filter)
+    if statuses:
+        query = query.filter(Settlement.status.in_(statuses))
+    if payer_id is not None:
+        query = query.filter(Settlement.payer_user_id == payer_id)
+    if receiver_id is not None:
+        query = query.filter(Settlement.receiver_user_id == receiver_id)
+
+    return (
+        query.order_by(Settlement.settled_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+
+def get_payment_by_id(
+    db: Session, settlement_id: UUID, current_user_id: UUID
+) -> Settlement:
+    settlement = (
+        db.query(Settlement)
+        .filter(Settlement.settlement_id == settlement_id)
+        .first()
+    )
+    if not settlement:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Pago no encontrado"
+        )
+    validate_group_member(
+        db,
+        settlement.group_id,
+        current_user_id,
+        "No tienes permisos sobre este pago",
+    )
+    return settlement
+
+
 # ============================================================
 # PAGOS
 # ============================================================
@@ -357,6 +430,11 @@ def mark_payment_paid(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El pago ya fue confirmado",
         )
+    if settlement.status == SettlementStatus.CANCELLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El pago fue cancelado y no puede confirmarse",
+        )
 
     settlement.status = SettlementStatus.PAID
     settlement.settled_at = datetime.now(timezone.utc)
@@ -381,3 +459,177 @@ def mark_payment_paid(
         db.rollback()
 
     return settlement
+
+
+def cancel_payment(
+    db: Session, settlement_id: UUID, current_user_id: UUID
+) -> Settlement:
+    """Cancela/rechaza un pago PENDING (auditoria: pasa a CANCELLED)."""
+    settlement = (
+        db.query(Settlement)
+        .filter(Settlement.settlement_id == settlement_id)
+        .first()
+    )
+    if not settlement:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Pago no encontrado"
+        )
+
+    validate_group_member(
+        db,
+        settlement.group_id,
+        current_user_id,
+        "No tienes permisos sobre este pago",
+    )
+
+    if settlement.payer_user_id != current_user_id and (
+        settlement.receiver_user_id != current_user_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo el pagador o el receptor pueden cancelar el pago",
+        )
+
+    if settlement.status in SETTLED_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El pago ya fue confirmado y no puede cancelarse",
+        )
+    if settlement.status == SettlementStatus.CANCELLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El pago ya fue cancelado",
+        )
+
+    settlement.status = SettlementStatus.CANCELLED
+    settlement.settled_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(settlement)
+    return settlement
+
+
+# ============================================================
+# BALANCE SUMMARY
+# ============================================================
+
+def get_group_balance_summary(db: Session, group_id: UUID) -> dict:
+    """Resumen agregado por grupo: totales + balances + transfers sugeridas."""
+    group = get_group_or_404(db, group_id)
+    balances = compute_balances(db, group_id)
+    debts_info = get_group_debts(db, group_id)
+
+    expenses = db.query(Expense).filter(Expense.group_id == group_id).all()
+    total_expenses = _quant(
+        sum((Decimal(e.total_amount) for e in expenses), Decimal("0"))
+    )
+
+    settlements = (
+        db.query(Settlement)
+        .filter(
+            Settlement.group_id == group_id,
+            Settlement.status.in_(list(SETTLED_STATUSES)),
+        )
+        .all()
+    )
+    total_settled = _quant(
+        sum((Decimal(s.amount) for s in settlements), Decimal("0"))
+    )
+    total_pending = _quant(
+        sum((d["amount"] for d in debts_info["debts"]), Decimal("0"))
+    )
+
+    members = (
+        db.query(GroupMember)
+        .filter(GroupMember.group_id == group_id)
+        .all()
+    )
+
+    return {
+        "group_id": group.group_id,
+        "total_expenses": total_expenses,
+        "total_settled_amount": total_settled,
+        "total_pending_amount": total_pending,
+        "pending_count": len(debts_info["debts"]),
+        "member_count": len(members),
+        "is_settled": debts_info["is_settled"],
+        "balances": balances,
+        "suggested_transfers": debts_info["debts"],
+    }
+
+
+def get_user_global_summary(db: Session, user_id: UUID) -> dict:
+    """Resumen global del usuario en todos sus grupos."""
+    memberships = (
+        db.query(GroupMember).filter(GroupMember.user_id == user_id).all()
+    )
+    group_ids = [m.group_id for m in memberships]
+    names: dict = {}
+    if group_ids:
+        groups = db.query(Group).filter(Group.group_id.in_(group_ids)).all()
+        names = {g.group_id: g.group_name for g in groups}
+
+    total_owed = Decimal("0")
+    total_to_receive = Decimal("0")
+    per_group: list[dict] = []
+
+    for gid in group_ids:
+        result = get_group_debts(db, gid)
+        owed = _quant(
+            sum(
+                (
+                    d["amount"]
+                    for d in result["debts"]
+                    if d["debtor_user_id"] == user_id
+                ),
+                Decimal("0"),
+            )
+        )
+        to_receive = _quant(
+            sum(
+                (
+                    d["amount"]
+                    for d in result["debts"]
+                    if d["creditor_user_id"] == user_id
+                ),
+                Decimal("0"),
+            )
+        )
+        total_owed += owed
+        total_to_receive += to_receive
+        per_group.append(
+            {
+                "group_id": gid,
+                "group_name": names.get(gid, ""),
+                "owed": owed,
+                "to_receive": to_receive,
+                "net": _quant(to_receive - owed),
+                "pending_count": len(
+                    [
+                        d
+                        for d in result["debts"]
+                        if d["debtor_user_id"] == user_id
+                        or d["creditor_user_id"] == user_id
+                    ]
+                ),
+                "is_settled": len(
+                    [
+                        d
+                        for d in result["debts"]
+                        if d["debtor_user_id"] == user_id
+                        or d["creditor_user_id"] == user_id
+                    ]
+                )
+                == 0,
+            }
+        )
+
+    total_owed = _quant(total_owed)
+    total_to_receive = _quant(total_to_receive)
+    return {
+        "user_id": user_id,
+        "total_owed": total_owed,
+        "total_to_receive": total_to_receive,
+        "net": _quant(total_to_receive - total_owed),
+        "group_count": len(group_ids),
+        "per_group": per_group,
+    }

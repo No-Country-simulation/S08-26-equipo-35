@@ -3,7 +3,6 @@ from fastapi import APIRouter
 router = APIRouter()
 
 
-
 from uuid import UUID
 from sqlalchemy.orm import Session 
 from fastapi import Depends

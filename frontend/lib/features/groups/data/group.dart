@@ -1,4 +1,4 @@
-/// Respuesta de `GET /api/v1/list` — un grupo, tal como lo devuelve la API.
+/// Respuesta de `GET /api/v1/groups/list` — un grupo, tal como lo devuelve la API.
 /// Nota: la API todavía no incluye miembros, balance, ni ícono/color por
 /// grupo. Ver GroupRepository/Home para cómo se cubren esos huecos por ahora.
 class Group {

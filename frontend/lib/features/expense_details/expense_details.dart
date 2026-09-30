@@ -23,6 +23,9 @@ import '../../core/network/api_client.dart';
 import '../../design_system/components/ui/text_fields/app_text_field.dart';
 import '../expenses/data/expense.dart';
 import '../expenses/data/expense_repository.dart';
+import '../expenses/payer_picker_dialog.dart';
+import '../groups/data/group_detail.dart';
+import '../groups/data/group_repository.dart';
 import '../auth/data/auth_session.dart';
 
 /// Expense Details conectado a GET /expenses/{id}.
@@ -711,6 +714,11 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
   bool _isSubmitting = false;
   String? _error;
 
+  /// Pagador editable — se carga con los miembros del grupo en background.
+  String? _payerUserId;
+  List<GroupMember> _members = [];
+  final Map<String, String> _userProfiles = {};
+
   @override
   void initState() {
     super.initState();
@@ -718,6 +726,66 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
     _amountController = TextEditingController(
       text: widget.expense.totalAmount.toStringAsFixed(2),
     );
+    _payerUserId = widget.expense.payerUserId;
+    _loadPayerOptions();
+  }
+
+  /// Carga miembros (GET /groups/detail) + nombres (GET /balances) sin
+  /// bloquear el formulario; si falla, la fila queda sin chevron y no
+  /// se puede cambiar el pagador (se conserva el actual).
+  Future<void> _loadPayerOptions() async {
+    try {
+      final detail = await GroupRepository.instance.groupDetail(widget.expense.groupId);
+      if (!mounted) return;
+      setState(() => _members = detail.members);
+    } catch (_) {
+      return;
+    }
+    try {
+      final balances = await GroupRepository.instance.listBalances(widget.expense.groupId);
+      if (!mounted) return;
+      setState(() {
+        _userProfiles
+          ..clear()
+          ..addEntries(balances.map((b) => MapEntry(b.userId, b.name)));
+      });
+    } catch (_) {
+      // Sin nombres quedan los placeholders "Member ab12cd34".
+    }
+  }
+
+  String _displayName(String userId) {
+    final profileName = _userProfiles[userId];
+    if (profileName != null && profileName.trim().isNotEmpty) return profileName;
+    if (userId == AuthSession.instance.userId) return AuthSession.instance.userName ?? 'You';
+    return 'Member ${userId.substring(0, userId.length >= 8 ? 8 : userId.length)}';
+  }
+
+  String _initials(String userId) {
+    if (userId == AuthSession.instance.userId) return 'Y';
+    final profileName = _userProfiles[userId];
+    if (profileName != null && profileName.trim().isNotEmpty) {
+      final parts = profileName.trim().split(RegExp(r'\s+'));
+      if (parts.length >= 2) return (parts.first[0] + parts.last[0]).toUpperCase();
+      return profileName.trim().substring(0, 2).toUpperCase();
+    }
+    return userId.substring(0, 2).toUpperCase();
+  }
+
+  Future<void> _showPayerPicker() async {
+    if (_members.isEmpty) return;
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => PayerPickerDialog(
+        members: _members,
+        selectedUserId: _payerUserId,
+        displayName: _displayName,
+        initials: _initials,
+      ),
+    );
+    if (selected != null && mounted) {
+      setState(() => _payerUserId = selected);
+    }
   }
 
   @override
@@ -746,6 +814,7 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
         expenseId: widget.expense.expenseId,
         title: newTitle,
         totalAmount: newAmount,
+        payerUserId: _payerUserId == widget.expense.payerUserId ? null : _payerUserId,
       );
       if (!mounted) return;
       Navigator.pop(context, updated);
@@ -784,6 +853,26 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
               labelText: 'Amount',
               prefixText: '\$ ',
               border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          GestureDetector(
+            onTap: _members.isEmpty ? null : _showPayerPicker,
+            behavior: HitTestBehavior.opaque,
+            child: AppInfoRow(
+              leading: AppAvatar(
+                initials: _initials(_payerUserId ?? widget.expense.payerUserId),
+                size: 40,
+              ),
+              label: 'Paid by',
+              value: _displayName(_payerUserId ?? widget.expense.payerUserId),
+              trailing: _members.isEmpty
+                  ? null
+                  : const Icon(
+                      Icons.chevron_right,
+                      size: 20,
+                      color: AppSemanticColors.slate400,
+                    ),
             ),
           ),
           if (_error != null) ...[

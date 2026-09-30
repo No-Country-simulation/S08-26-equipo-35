@@ -145,8 +145,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _handleLogout() {
-    AuthSession.instance.clear();
+  Future<void> _handleLogout() async {
+    await AuthSession.instance.clear();
+    if (!mounted) return;
     Navigator.pushNamedAndRemoveUntil(
       context,
       AppRoutes.onboarding,

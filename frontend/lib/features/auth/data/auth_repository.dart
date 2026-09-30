@@ -2,6 +2,9 @@ import '../../../core/network/api_client.dart';
 import 'auth_session.dart';
 import 'user_profile.dart';
 
+/// Mapeo de error type from API validation para field errors
+enum UserError { notFound, serverError }
+
 /// Repositorio de autenticación. Mantiene `register`, `login` y
 /// `fetchProfile` juntos porque el flujo de la app los encadena — si
 /// crecen mucho, sepáralos en archivos distintos.
@@ -38,7 +41,7 @@ class AuthRepository {
       throw ApiException(0, 'La respuesta de login no incluyó un access_token.');
     }
 
-    AuthSession.instance.saveToken(token);
+    await AuthSession.instance.saveToken(token);
     return token;
   }
 
@@ -49,7 +52,7 @@ class AuthRepository {
   Future<UserProfile> fetchProfile() async {
     final response = await ApiClient.get('/me', authenticated: true);
     final profile = UserProfile.fromJson(response as Map<String, dynamic>);
-    AuthSession.instance.saveProfile(profile);
+    await AuthSession.instance.saveProfile(profile);
     return profile;
   }
 
@@ -59,7 +62,7 @@ class AuthRepository {
     if (email != null) body['email'] = email;
     final response = await ApiClient.patch('/me', body, authenticated: true);
     final profile = UserProfile.fromJson(response);
-    AuthSession.instance.saveProfile(profile);
+    await AuthSession.instance.saveProfile(profile);
     return profile;
   }
 
@@ -75,6 +78,6 @@ class AuthRepository {
 
   Future<void> deleteAccount() async {
     await ApiClient.delete('/me', authenticated: true);
-    AuthSession.instance.clear();
+    await AuthSession.instance.clear();
   }
 }

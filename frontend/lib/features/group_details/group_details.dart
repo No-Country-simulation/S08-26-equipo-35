@@ -14,11 +14,13 @@ import '../../design_system/navigations/app_top_bar.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../core/utils/category_visual.dart';
 import '../../core/utils/date_format.dart';
 import '../../core/network/api_client.dart';
 import '../../design_system/components/ui/text_fields/app_text_field.dart';
 import '../../router/app_router.dart';
 import '../auth/data/auth_session.dart';
+import '../auth/data/user_profile.dart';
 import '../expenses/data/expense.dart';
 import '../expenses/data/expense_repository.dart';
 import '../groups/data/group_detail.dart';
@@ -26,53 +28,29 @@ import '../groups/data/group_repository.dart';
 import '../groups/domain/balance_calculator.dart';
 
 class _GroupDetailsData {
-  const _GroupDetailsData({required this.detail, required this.expenses});
+  const _GroupDetailsData({
+    required this.detail,
+    required this.expenses,
+    required this.balances,
+    required this.debts,
+    required this.settlementStatus,
+    this.userProfiles = const {},
+  });
   final GroupDetail detail;
   final List<Expense> expenses;
+  final List<BalanceResponse> balances;
+  final List<DebtResponse> debts;
+  final GroupSettlementStatus settlementStatus;
+  final Map<String, UserProfile> userProfiles; // userId -> Profile cache
 }
 
-/// Devuelve (ícono, color de fondo, color de acento) para una categoría.
-/// Las 4 que reconoce son las que esta misma app manda desde Log Expense
-/// (ver _categoryApiLabel ahí) — cualquier otro texto (de otro cliente,
-/// u otro idioma) cae en el genérico.
-(IconData, Color, Color) _categoryVisual(String category) {
-  switch (category) {
-    case 'Food & Drink':
-      return (
-        Icons.restaurant,
-        const Color(0xFFFFF7ED),
-        const Color(0xFFEA580C),
-      );
-    case 'Transport':
-      return (
-        Icons.directions_car,
-        const Color(0xFFF0F9FF),
-        const Color(0xFF0284C7),
-      );
-    case 'Stay':
-      return (Icons.home, const Color(0xFFF5F3FF), const Color(0xFF7C3AED));
-    case 'Activities':
-      return (
-        Icons.local_activity,
-        const Color(0xFFFEFCE8),
-        const Color(0xFFCA8A04),
-      );
-    default:
-      return (
-        Icons.receipt_long,
-        AppMd3Colors.surfaceContainer,
-        AppMd3Colors.primaryContainer,
-      );
-  }
-}
-
-/// Group Details conectado a GET /detail/{id} + GET /groups/{id}/expenses.
+/// Group Details conectado a GET /groups/detail/{id}, GET /groups/{id}/expenses,
+/// GET /groups/{id}/settlements (nombres + deudas), PATCH /groups/{id}
+/// (renombrar) y DELETE /groups/{id} (borrar).
 ///
 /// Sin conectar, por falta de endpoint: código/link de invitación
 /// ("Crew & Friends" no tiene el chip de código), "Share Link" y
-/// "Summary" (quick actions sin acción real), y editar el nombre del
-/// grupo (el lápiz no hace nada — existe PATCH /{id_group} pero no lo
-/// conecté en este paso para no mezclar lectura con edición).
+/// "Summary" (quick actions sin acción real).
 class GroupDetails extends StatefulWidget {
   const GroupDetails({super.key, required this.groupId});
 
@@ -96,10 +74,28 @@ class _GroupDetailsState extends State<GroupDetails> {
     final results = await Future.wait([
       GroupRepository.instance.groupDetail(widget.groupId),
       ExpenseRepository.instance.listGroupExpenses(widget.groupId),
+      GroupRepository.instance.getSettlements(widget.groupId),
+      GroupRepository.instance.getSettlementStatus(widget.groupId),
     ]);
+    final detail = results[0] as GroupDetail;
+    final expenses = results[1] as List<Expense>;
+    final bundle = results[2] as GroupDebtsBundle;
+    final settlementStatus = results[3] as GroupSettlementStatus;
+
+    // Nombres de los miembros: GET /balances (vía /settlements) trae
+    // {user_id, name} de cada uno — GET /users/{id} no existe en la API.
+    final Map<String, UserProfile> userProfiles = {
+      for (final b in bundle.balances)
+        b.userId: UserProfile(userId: b.userId, name: b.name, email: ''),
+    };
+
     return _GroupDetailsData(
-      detail: results[0] as GroupDetail,
-      expenses: results[1] as List<Expense>,
+      detail: detail,
+      expenses: expenses,
+      balances: bundle.balances,
+      debts: bundle.debts,
+      settlementStatus: settlementStatus,
+      userProfiles: userProfiles,
     );
   }
 
@@ -116,14 +112,43 @@ class _GroupDetailsState extends State<GroupDetails> {
     }
   }
 
-  String _displayName(String userId) {
-    if (userId == AuthSession.instance.userId)
+  Future<void> _showDeleteDialog(GroupDetail detail) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => _DeleteGroupDialog(detail: detail),
+    );
+
+    if (confirmed == true && mounted) {
+      _retry();
+    }
+  }
+
+  String _displayName(String userId, [Map<String, UserProfile>? userProfiles]) {
+    // Buscar en cache de perfiles de usuario si fue proporcionado
+    if (userProfiles != null) {
+      final cached = userProfiles[userId];
+      if (cached != null) {
+        return cached.name;
+      }
+    }
+    // Fallback: si es el usuario actual
+    if (userId == AuthSession.instance.userId) {
       return AuthSession.instance.userName ?? 'You';
+    }
+    // Fallback final: placeholder con UUID
     return 'Member ${userId.substring(0, userId.length >= 8 ? 8 : userId.length)}';
   }
 
-  String _initials(String userId) {
+  String _initials(String userId, [Map<String, UserProfile>? userProfiles]) {
+    // Buscar en cache de perfiles de usuario usando operador nulo-safe
+    final cached = userProfiles?[userId];
+    
+    if (cached != null) {
+      return cached.name.isNotEmpty ? cached.name.substring(0, 1).toUpperCase() : 'U';
+    }
+    // Si es el usuario actual
     if (userId == AuthSession.instance.userId) return 'Y';
+    // Fallback: iniciales del UUID
     return userId.substring(0, 2).toUpperCase();
   }
 
@@ -181,18 +206,61 @@ class _GroupDetailsState extends State<GroupDetails> {
           final expenses = data.expenses;
           final myUserId = AuthSession.instance.userId;
           final memberCount = detail.members.length;
+          final settlementStatus = data.settlementStatus;
 
-          final netBalance = myUserId == null
-              ? null
-              : calculateNetBalance(
-                  expenses: expenses,
-                  myUserId: myUserId,
-                  memberCount: memberCount,
-                );
           final totalSpending = expenses.fold<double>(
             0,
             (sum, e) => sum + e.totalAmount,
           );
+
+          // Determinar estado del balance usando datos de la API.
+          // Deuda = el DEBTOR le debe al CREDITOR: si soy debtor debo yo,
+          // si soy creditor me deben a mí.
+          String apiBalanceLabel;
+          String? apiBalanceAmount;
+          Color apiBalanceBackground;
+          Color apiBalanceTextColor;
+
+          if (myUserId != null) {
+            final myDebts = data.debts
+                .where((d) =>
+                    d.status.toUpperCase() != 'PAID' &&
+                    d.debtorUserId == myUserId)
+                .toList();
+            final myCredits = data.debts
+                .where((d) =>
+                    d.status.toUpperCase() != 'PAID' &&
+                    d.creditorUserId == myUserId)
+                .toList();
+
+            if (myDebts.isNotEmpty) {
+              final totalOwedByMe = myDebts.fold<double>(
+                0,
+                (sum, d) => sum + double.parse(d.amount),
+              );
+              apiBalanceLabel = 'You owe';
+              apiBalanceAmount = '\$${totalOwedByMe.toStringAsFixed(2)}';
+              apiBalanceBackground = AppSemanticColors.negativeContainer;
+              apiBalanceTextColor = AppSemanticColors.negativeText;
+            } else if (myCredits.isNotEmpty) {
+              final totalOwedToMe = myCredits.fold<double>(
+                0,
+                (sum, d) => sum + double.parse(d.amount),
+              );
+              apiBalanceLabel = 'You are owed';
+              apiBalanceAmount = '\$${totalOwedToMe.toStringAsFixed(2)}';
+              apiBalanceBackground = AppSemanticColors.positiveContainer;
+              apiBalanceTextColor = AppSemanticColors.positiveText;
+            } else {
+              apiBalanceLabel = "You're all settled up";
+              apiBalanceBackground = AppSemanticColors.positiveContainer;
+              apiBalanceTextColor = AppSemanticColors.positiveText;
+            }
+          } else {
+            apiBalanceLabel = "You're all settled up";
+            apiBalanceBackground = AppSemanticColors.positiveContainer;
+            apiBalanceTextColor = AppSemanticColors.positiveText;
+          }
 
           final categories = <String>{
             'All',
@@ -201,8 +269,8 @@ class _GroupDetailsState extends State<GroupDetails> {
           final filtered = _categoryFilter == 'All'
               ? expenses
               : expenses
-                    .where((e) => e.expenseCategory == _categoryFilter)
-                    .toList();
+                  .where((e) => e.expenseCategory == _categoryFilter)
+                  .toList();
           final sorted = [...filtered]
             ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
@@ -258,52 +326,52 @@ class _GroupDetailsState extends State<GroupDetails> {
                     ),
                     const SizedBox(height: AppSpacing.sm),
 
-                    if (netBalance == null)
+                    // Balance state from API settlement data
+                    if (myUserId == null)
                       const AppInfoBanner(
                         icon: Icon(
                           Icons.help_outline,
                           color: AppSemanticColors.slate400,
                         ),
-                        title: 'Balance not available',
-                        description:
-                            "We couldn't verify your session to calculate this.",
+                        title: 'Balance unavailable',
+                        description: 'No active session user to show balance.',
                         background: AppSemanticColors.slate100,
                       )
-                    else if (netBalance > 0.005)
-                      AppInfoBanner(
-                        icon: const Icon(
-                          Icons.trending_up,
-                          color: AppSemanticColors.positiveText,
-                        ),
-                        title:
-                            'You are owed \$${netBalance.toStringAsFixed(2)}',
-                        description:
-                            'Based on ${expenses.length} expense${expenses.length == 1 ? '' : 's'}',
-                        background: AppSemanticColors.positiveContainer,
-                      )
-                    else if (netBalance < -0.005)
-                      AppInfoBanner(
-                        icon: const Icon(
-                          Icons.trending_down,
-                          color: AppSemanticColors.negativeText,
-                        ),
-                        title:
-                            'You owe \$${netBalance.abs().toStringAsFixed(2)}',
-                        description:
-                            'Based on ${expenses.length} expense${expenses.length == 1 ? '' : 's'}',
-                        background: AppSemanticColors.negativeContainer,
+                    else if (apiBalanceAmount != null)
+                      _BalanceBanner(
+                        label: apiBalanceLabel,
+                        amount: apiBalanceAmount,
+                        background: apiBalanceBackground,
+                        textColor: apiBalanceTextColor,
                       )
                     else
-                      const AppInfoBanner(
-                        icon: Icon(
+                      AppInfoBanner(
+                        icon: const Icon(
                           Icons.check_circle,
                           color: AppSemanticColors.positiveText,
                         ),
-                        title: "You're all settled up",
-                        description: 'No pending balance in this group.',
-                        background: AppSemanticColors.positiveContainer,
+                        title: apiBalanceLabel,
+                        description: 'No pending settlements in this group.',
+                        background: apiBalanceBackground,
                       ),
-                    const SizedBox(height: AppSpacing.lg),
+                    const SizedBox(height: AppSpacing.sm),
+
+                    // Settlement status badge
+                    _SettlementStatusBadge(settlementStatus: settlementStatus),
+
+                    // Debt list visualization (bundle de /settlements, que
+                    // siempre trae la lista; settlementStatus.debts puede
+                    // venir vacío por default en el schema)
+                    if (myUserId != null && data.debts.isNotEmpty)
+                      _DebtListViewer(debts: data.debts)
+                    else
+                      Text(
+                        'No debts found.',
+                        style: AppTypography.bodyMd(
+                          color: AppSemanticColors.slate600,
+                        ),
+                      ),
+                    const SizedBox(height: AppSpacing.sm),
 
                     Text(
                       'Crew & Friends',
@@ -319,10 +387,10 @@ class _GroupDetailsState extends State<GroupDetails> {
                           for (final member in detail.members) ...[
                             MemberChip(
                               avatar: AppAvatar(
-                                initials: _initials(member.userId),
+                                initials: _initials(member.userId, data.userProfiles),
                                 size: 24,
                               ),
-                              name: _displayName(member.userId),
+                              name: _displayName(member.userId, data.userProfiles),
                             ),
                             const SizedBox(width: AppSpacing.xs),
                           ],
@@ -359,6 +427,7 @@ class _GroupDetailsState extends State<GroupDetails> {
                             onTap: () => Navigator.pushNamed(
                               context,
                               AppRoutes.balances,
+                              arguments: widget.groupId,
                             ),
                           ),
                         ),
@@ -366,14 +435,13 @@ class _GroupDetailsState extends State<GroupDetails> {
                         Expanded(
                           child: AppQuickActionTile(
                             icon: const Icon(
-                              Icons.ios_share,
-                              color: AppMd3Colors.primaryContainer,
+                              Icons.delete,
+                              color: AppSemanticColors.negativeText,
                               size: 20,
                             ),
-                            iconBackground: AppMd3Colors.surfaceContainer,
-                            label: 'Summary',
-                            onTap:
-                                () {}, // Sin conectar: no hay endpoint de resumen/exportación.
+                            iconBackground: AppSemanticColors.negativeContainer,
+                            label: 'Eliminar grupo',
+                            onTap: () => _showDeleteDialog(detail),
                           ),
                         ),
                       ],
@@ -400,7 +468,7 @@ class _GroupDetailsState extends State<GroupDetails> {
                               selected: _categoryFilter == category,
                               dotColor: category == 'All'
                                   ? null
-                                  : _categoryVisual(category).$3,
+                                  : categoryVisual(category).$3,
                               onTap: () =>
                                   setState(() => _categoryFilter = category),
                             ),
@@ -464,7 +532,7 @@ class _GroupDetailsState extends State<GroupDetails> {
     String? myUserId,
     int memberCount,
   ) {
-    final (icon, iconBg, _) = _categoryVisual(expense.expenseCategory);
+    final (icon, iconBg, _) = categoryVisual(expense.expenseCategory);
 
     var status = ExpenseRowStatus.neutral;
     var statusLabel = '';
@@ -485,7 +553,7 @@ class _GroupDetailsState extends State<GroupDetails> {
       icon: Icon(
         icon,
         size: 20,
-        color: _categoryVisual(expense.expenseCategory).$3,
+        color: categoryVisual(expense.expenseCategory).$3,
       ),
       iconBackground: iconBg,
       title: expense.title,
@@ -502,6 +570,126 @@ class _GroupDetailsState extends State<GroupDetails> {
           arguments: expense.expenseId,
         );
       },
+    );
+  }
+}
+
+class _BalanceBanner extends StatelessWidget {
+  const _BalanceBanner({
+    required this.label,
+    required this.amount,
+    required this.background,
+    required this.textColor,
+  });
+
+  final String label;
+  final String amount;
+  final Color background;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppInfoBanner(
+      icon: const Icon(
+        Icons.trending_up,
+        color: AppSemanticColors.positiveText,
+      ),
+      title: '$label $amount',
+      description: 'Based on settlement data from API',
+      background: background,
+    );
+  }
+}
+
+class _DeleteGroupDialog extends StatefulWidget {
+  const _DeleteGroupDialog({required this.detail});
+
+  final GroupDetail detail;
+
+  @override
+  State<_DeleteGroupDialog> createState() => _DeleteGroupDialogState();
+}
+
+class _DeleteGroupDialogState extends State<_DeleteGroupDialog> {
+  late final TextEditingController _nameController;
+  bool _isSubmitting = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.detail.groupName);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleDelete() async {
+    setState(() {
+      _isSubmitting = true;
+      _error = null;
+    });
+
+    try {
+      await GroupRepository.instance.deleteGroup(widget.detail.groupId);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _isSubmitting = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'No se pudo conectar con el servidor.';
+        _isSubmitting = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Eliminar grupo'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '¿Estás seguro de que quieres eliminar el grupo "${widget.detail.groupName}"?',
+            style: AppTypography.bodySm(
+              color: AppSemanticColors.slate600,
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              _error!,
+              style: AppTypography.bodySm(color: AppSemanticColors.negativeText),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context, false),
+          child: const Text('Cancelar'),
+        ),
+        TextButton(
+          onPressed: _isSubmitting ? null : _handleDelete,
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Eliminar'),
+        ),
+      ],
     );
   }
 }
@@ -601,6 +789,196 @@ class _RenameGroupDialogState extends State<_RenameGroupDialog> {
               : const Text('Save'),
         ),
       ],
+    );
+  }
+}
+
+class _SettlementStatusBadge extends StatelessWidget {
+  const _SettlementStatusBadge({
+    required this.settlementStatus,
+  });
+
+  final GroupSettlementStatus settlementStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSettled = settlementStatus.isSettled;
+    final pendingCount = settlementStatus.pendingCount;
+    final totalPendingAmount = settlementStatus.totalPendingAmount;
+
+    // Use positive colors for settled, warning colors for pending
+    final Color backgroundColor = isSettled
+        ? AppSemanticColors.positiveContainer
+        : AppSemanticColors.negativeContainer;
+    final Color textColor = isSettled
+        ? AppSemanticColors.positiveText
+        : AppSemanticColors.negativeText;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: AppRadius.mdRadius,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isSettled ? Icons.check_circle : Icons.remove,
+            color: textColor,
+            size: 20,
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            isSettled
+              ? 'Settled up'
+              : '$pendingCount pending${pendingCount == 1 ? '' : 's'}',
+            style: AppTypography.bodySm(
+              color: textColor,
+            ),
+          ),
+          if (totalPendingAmount.isNotEmpty)
+            Text(
+              ' \$$totalPendingAmount',
+              style: AppTypography.bodySm(
+                color: textColor,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DebtListViewer extends StatelessWidget {
+  const _DebtListViewer({
+    required this.debts,
+  });
+
+  final List<DebtResponse> debts;
+
+  @override
+  Widget build(BuildContext context) {
+    final myUserId = AuthSession.instance.userId;
+    // Deuda = el DEBTOR le debe al CREDITOR. Si soy debtor, debo yo;
+    // si soy creditor, me deben a mí. PAID ya no está pendiente.
+    final owe = debts
+        .where((d) =>
+            d.status.toUpperCase() != 'PAID' && d.debtorUserId == myUserId)
+        .toList();
+    final owed = debts
+        .where((d) =>
+            d.status.toUpperCase() != 'PAID' && d.creditorUserId == myUserId)
+        .toList();
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.marginMobile),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (owe.isEmpty && owed.isEmpty)
+              Text(
+                'No pending debts.',
+                style: AppTypography.bodySm(color: AppSemanticColors.slate600),
+              ),
+            if (owe.isNotEmpty)
+              _debtSection(
+                context: context,
+                label: 'You owe',
+                items: owe,
+                icon: Icons.arrow_upward,
+                color: AppSemanticColors.negativeText,
+              ),
+            if (owed.isNotEmpty)
+              _debtSection(
+                context: context,
+                label: 'You are owed',
+                items: owed,
+                icon: Icons.arrow_downward,
+                color: AppSemanticColors.positiveText,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _debtSection({
+    required BuildContext context,
+    required String label,
+    required List<DebtResponse> items,
+    required IconData icon,
+    required Color color,
+  }) {
+    final total = items.fold<double>(0, (s, d) => s + double.parse(d.amount));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: AppSpacing.xs),
+            Text(
+              label,
+              style: AppTypography.bodySm(color: color),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Row(
+          children: [
+            Text(
+              '${items.length} ${items.length == 1 ? 'debt' : 'debts'}',
+              style: AppTypography.bodySm(color: AppSemanticColors.slate600),
+            ),
+            const Spacer(),
+            Text(
+              '\$${total.toStringAsFixed(2)}',
+              style: AppTypography.bodySm(color: color),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        ...items.map((debt) => _DebtTile(
+              debtorName: debt.debtorName,
+              creditorName: debt.creditorName,
+              amount: debt.amount,
+              status: debt.status,
+            )),
+        const SizedBox(height: AppSpacing.sm),
+      ],
+    );
+  }
+}
+
+class _DebtTile extends StatelessWidget {
+  const _DebtTile({
+    required this.debtorName,
+    required this.creditorName,
+    required this.amount,
+    required this.status,
+  });
+
+  final String debtorName;
+  final String creditorName;
+  final String amount;
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: CircleAvatar(
+        child: Text(debtorName.isNotEmpty ? debtorName[0].toUpperCase() : '?'),
+      ),
+      title: Text(debtorName),
+      subtitle: Text(creditorName),
+      trailing: Text(amount),
+      onTap: () {
+        // Navigate to debt details or show expense breakdown
+      },
     );
   }
 }

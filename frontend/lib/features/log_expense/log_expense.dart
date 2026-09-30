@@ -18,6 +18,7 @@ import '../../core/network/api_client.dart';
 import '../auth/data/auth_session.dart';
 import '../expenses/data/expense.dart';
 import '../expenses/data/expense_repository.dart';
+import '../expenses/payer_picker_dialog.dart';
 import '../groups/data/group_detail.dart';
 import '../groups/data/group_repository.dart';
 
@@ -30,12 +31,12 @@ const Map<ExpenseCategory, String> _categoryApiLabel = {
 
 /// Pantalla de registrar gasto, conectada a POST /groups/{id}/expenses.
 ///
-/// Simplificaciones deliberadas, marcadas para cuando haya más endpoints:
-/// - "Paid by" queda fijo en el usuario actual — sin un endpoint que
-///   resuelva nombres de otros miembros, un selector de pagador solo
-///   mostraría UUIDs, que es peor que no tenerlo.
-/// - Los miembros de "For whom?" se muestran como "You" (vos) o
-///   "Member ab12cd34" (los demás) — mismo motivo.
+/// El pagador ("Paid by") se elige entre los miembros del grupo
+/// (`PayerPickerDialog`) y se manda como `payer_user_id`.
+/// Los miembros de "For whom?" muestran nombre real vía GET /balances
+/// (la API no tiene GET /users/{id}; cache en `_userProfiles`); si no
+/// carga, queda el placeholder "Member ab12cd34" sin bloquear registrar
+/// el gasto.
 class LogExpense extends StatefulWidget {
   const LogExpense({super.key, required this.groupId});
 
@@ -53,6 +54,14 @@ class _LogExpenseState extends State<LogExpense> {
   late Future<GroupDetail> _groupDetailFuture;
   List<GroupMember> _members = [];
   final Set<String> _selectedMemberIds = {};
+
+  /// Pagador seleccionado — por defecto el usuario actual si es miembro,
+  /// si no el primer miembro del grupo (se resuelve en `_loadMembers`).
+  String? _payerUserId;
+
+  /// userId -> nombre real (GET /groups/{id}/balances), para mostrar
+  /// nombres en "For whom?" en vez del placeholder "Member ab12cd34".
+  final Map<String, String> _userProfiles = {};
 
   ExpenseCategory _category = ExpenseCategory.food;
   int _splitTypeIndex = 0; // 0 = equal, 1 = custom
@@ -80,8 +89,37 @@ class _LogExpenseState extends State<LogExpense> {
           () => TextEditingController(),
         );
       }
+      // Pagador por defecto: el usuario actual si es miembro, si no
+      // el primer miembro (la API exige payer_user_id de un miembro).
+      final currentUserId = _myUserId;
+      final memberIds = detail.members.map((m) => m.userId).toSet();
+      _payerUserId = (currentUserId != null && memberIds.contains(currentUserId))
+          ? currentUserId
+          : (detail.members.isNotEmpty ? detail.members.first.userId : null);
     });
+    // En segundo plano: no bloquea el formulario, los nombres aparecen
+    // a medida que llegan.
+    _loadMemberNames();
     return detail;
+  }
+
+  /// Trae los nombres de los miembros desde GET /groups/{id}/balances
+  /// (la API no tiene GET /users/{id}). Una sola llamada, en segundo
+  /// plano — no debe bloquear registrar el gasto.
+  Future<void> _loadMemberNames() async {
+    try {
+      final balances =
+          await GroupRepository.instance.listBalances(widget.groupId);
+      if (!mounted) return;
+      setState(() {
+        for (final b in balances) {
+          _userProfiles[b.userId] = b.name;
+        }
+      });
+    } catch (_) {
+      // Sin nombres: fallback "Member xxxxxxxx" — no debe bloquear
+      // registrar el gasto.
+    }
   }
 
   @override
@@ -98,13 +136,37 @@ class _LogExpenseState extends State<LogExpense> {
       double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
 
   String _displayName(String userId) {
+    final cached = _userProfiles[userId];
+    if (cached != null) return cached;
     if (userId == _myUserId) return AuthSession.instance.userName ?? 'You';
     return 'Member ${userId.substring(0, userId.length >= 8 ? 8 : userId.length)}';
   }
 
   String _initials(String userId) {
+    final cached = _userProfiles[userId];
+    if (cached != null) {
+      return cached.isNotEmpty
+          ? cached.substring(0, 1).toUpperCase()
+          : 'U';
+    }
     if (userId == _myUserId) return 'Y';
     return userId.substring(0, 2).toUpperCase();
+  }
+
+  /// Abre el selector de pagador entre los miembros del grupo.
+  Future<void> _showPayerPicker() async {
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => PayerPickerDialog(
+        members: _members,
+        selectedUserId: _payerUserId,
+        displayName: _displayName,
+        initials: _initials,
+      ),
+    );
+    if (selected != null && mounted) {
+      setState(() => _payerUserId = selected);
+    }
   }
 
   double _equalShare() {
@@ -123,12 +185,12 @@ class _LogExpenseState extends State<LogExpense> {
   Future<void> _handleSave() async {
     final title = _titleController.text.trim();
     final total = _totalAmount;
-    final myUserId = _myUserId;
+    final payerUserId = _payerUserId;
 
     if (title.isEmpty ||
         total <= 0 ||
         _selectedMemberIds.isEmpty ||
-        myUserId == null) {
+        payerUserId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -175,7 +237,7 @@ class _LogExpenseState extends State<LogExpense> {
     try {
       await ExpenseRepository.instance.createExpense(
         groupId: widget.groupId,
-        payerUserId: myUserId,
+        payerUserId: payerUserId,
         title: title,
         totalAmount: total,
         splitType: splitType,
@@ -360,15 +422,32 @@ class _LogExpenseState extends State<LogExpense> {
                 ),
                 const SizedBox(height: AppSpacing.md),
 
-                AppInfoRow(
-                  leading: const AppAvatar(initials: 'Y', size: 40),
-                  label: 'Paid by',
-                  value: AuthSession.instance.userName ?? 'You',
-                  trailing: AppTag(
-                    label: 'Primary',
-                    background: AppMd3Colors.surfaceContainer,
-                    foreground: AppMd3Colors.primaryContainer,
-                    uppercase: false,
+                GestureDetector(
+                  onTap: _showPayerPicker,
+                  behavior: HitTestBehavior.opaque,
+                  child: AppInfoRow(
+                    leading: AppAvatar(
+                      initials: _initials(_payerUserId ?? _myUserId ?? '?'),
+                      size: 40,
+                    ),
+                    label: 'Paid by',
+                    value: _displayName(_payerUserId ?? _myUserId ?? '?'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AppTag(
+                          label: 'Primary',
+                          background: AppMd3Colors.surfaceContainer,
+                          foreground: AppMd3Colors.primaryContainer,
+                          uppercase: false,
+                        ),
+                        const Icon(
+                          Icons.chevron_right,
+                          size: 20,
+                          color: AppSemanticColors.slate400,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),

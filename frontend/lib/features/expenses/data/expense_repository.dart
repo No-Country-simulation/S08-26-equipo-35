@@ -27,10 +27,12 @@ class ExpenseRepository {
     required String expenseId,
     String? title,
     double? totalAmount,
+    String? payerUserId,
   }) async {
     final body = <String, dynamic>{};
     if (title != null) body['title'] = title;
     if (totalAmount != null) body['total_amount'] = totalAmount;
+    if (payerUserId != null) body['payer_user_id'] = payerUserId;
     final response = await ApiClient.put('/expenses/$expenseId', body, authenticated: true);
     return Expense.fromJson(response);
   }

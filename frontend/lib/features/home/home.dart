@@ -19,6 +19,7 @@ import '../auth/data/auth_session.dart';
 import '../expenses/data/expense.dart';
 import '../expenses/data/expense_repository.dart';
 import '../groups/data/group.dart';
+import '../groups/group_picker_dialog.dart';
 import '../groups/data/group_detail.dart';
 import '../groups/data/group_repository.dart';
 import '../groups/domain/balance_calculator.dart';
@@ -43,9 +44,24 @@ class _GroupSummary {
 }
 
 class _HomeData {
-  const _HomeData({required this.groups, required this.overallNet});
+  const _HomeData({
+    required this.groups,
+    required this.overallNet,
+    this.iOwe = 0,
+    this.owedToMe = 0,
+    this.pendingCount = 0,
+  });
   final List<_GroupSummary> groups;
   final double? overallNet;
+
+  /// Suma de deudas pendientes (status != PAID) donde soy deudor.
+  final double iOwe;
+
+  /// Suma de deudas pendientes donde soy acreedor.
+  final double owedToMe;
+
+  /// Cantidad de deudas pendientes que me involucran (en todos los grupos).
+  final int pendingCount;
 }
 
 class Home extends StatefulWidget {
@@ -92,15 +108,37 @@ class _HomeState extends State<Home> {
 
     final summaries = <_GroupSummary>[];
     double? overall = myUserId == null ? null : 0;
+    double iOwe = 0;
+    double owedToMe = 0;
+    int pendingCount = 0;
 
     for (final group in groups) {
       try {
         final results = await Future.wait([
           GroupRepository.instance.groupDetail(group.groupId),
           ExpenseRepository.instance.listGroupExpenses(group.groupId),
+          GroupRepository.instance.listMyDebts(group.groupId),
         ]);
         final detail = results[0] as GroupDetail;
         final expenses = results[1] as List<Expense>;
+        final myDebts = results[2] as List<DebtResponse>;
+
+        // Deudas pendientes de ESTE grupo donde participo (GET /debts/me
+        // ya viene filtrado por el token, pero se chequea la dirección
+        // por si acaso). PAID no cuenta como pendiente.
+        if (myUserId != null) {
+          for (final d in myDebts) {
+            if (d.status.toUpperCase() == 'PAID') continue;
+            final amount = double.tryParse(d.amount) ?? 0;
+            if (d.debtorUserId == myUserId) {
+              iOwe += amount;
+              pendingCount++;
+            } else if (d.creditorUserId == myUserId) {
+              owedToMe += amount;
+              pendingCount++;
+            }
+          }
+        }
 
         double? net;
         if (myUserId != null) {
@@ -136,7 +174,13 @@ class _HomeState extends State<Home> {
       }
     }
 
-    return _HomeData(groups: summaries, overallNet: overall);
+    return _HomeData(
+      groups: summaries,
+      overallNet: overall,
+      iOwe: iOwe,
+      owedToMe: owedToMe,
+      pendingCount: pendingCount,
+    );
   }
 
   @override
@@ -236,13 +280,10 @@ class _HomeState extends State<Home> {
                       ],
                     ],
                     const SizedBox(height: AppSpacing.lg),
-                    AppInfoBanner(
-                      icon: const Icon(
-                        Icons.celebration,
-                        color: AppMd3Colors.primaryContainer,
-                      ),
-                      title: "You're in good shape!",
-                      description: 'No urgent settlements pending today.',
+                    _settlementsBanner(
+                      loading: loading,
+                      hasError: hasError,
+                      data: data,
                     ),
                     const SizedBox(height: 80),
                   ],
@@ -259,16 +300,35 @@ class _HomeState extends State<Home> {
                     size: 18,
                   ),
                   expand: false,
-                  // Simplificación temporal: usa el primer grupo de la
-                  // lista porque todavía no hay un selector de grupo ni
-                  // un punto de entrada dentro de un grupo específico.
                   onPressed: (data == null || data.groups.isEmpty)
                       ? null
                       : () async {
-                          final created = await Navigator.pushNamed(
-                            context,
+                          // Capturado antes de cualquier await para no
+                          // usar el BuildContext a través de un gap.
+                          final navigator = Navigator.of(context);
+                          // Con 1 solo grupo no hay nada que elegir: va
+                          // directo. Con varios, pide el grupo en un
+                          // diálogo antes de abrir Log Expense.
+                          String? groupId = data.groups.first.group.groupId;
+                          if (data.groups.length > 1) {
+                            groupId = await showDialog<String>(
+                              context: context,
+                              builder: (_) => GroupPickerDialog(
+                                groups: [
+                                  for (final s in data.groups) s.group,
+                                ],
+                                memberCounts: {
+                                  for (final s in data.groups)
+                                    s.group.groupId: s.memberCount,
+                                },
+                              ),
+                            );
+                          }
+                          if (groupId == null) return;
+                          if (!mounted) return;
+                          final created = await navigator.pushNamed(
                             AppRoutes.logExpense,
-                            arguments: data.groups.first.group.groupId,
+                            arguments: groupId,
                           );
                           if (created == true) _retry();
                         },
@@ -290,6 +350,84 @@ class _HomeState extends State<Home> {
         ],
         currentIndex: 0,
         onTap: (index) => _onNavTap(context, index),
+      ),
+    );
+  }
+
+  /// Banner de settlements pendientes:
+  /// - mientras carga, mensaje neutro;
+  /// - si hubo error, no se puede afirmar nada;
+  /// - con deudas pendientes, cuánto debes y cuánto te deben (GET /debts/me);
+  /// - sin deudas, el mensaje de "todo en orden".
+  Widget _settlementsBanner({
+    required bool loading,
+    required bool hasError,
+    required _HomeData? data,
+  }) {
+    if (hasError) {
+      return const AppInfoBanner(
+        icon: Icon(
+          Icons.help_outline,
+          color: AppSemanticColors.slate400,
+        ),
+        title: 'Settlements unavailable',
+        description: 'We could not load your pending settlements.',
+        background: AppSemanticColors.slate100,
+      );
+    }
+
+    if (loading || data == null) {
+      return const AppInfoBanner(
+        icon: Icon(
+          Icons.hourglass_empty,
+          color: AppMd3Colors.primaryContainer,
+        ),
+        title: 'Checking settlements…',
+        description: 'Looking for pending settlements in your groups.',
+        background: AppMd3Colors.surfaceContainerLow,
+      );
+    }
+
+    if (data.pendingCount == 0) {
+      return const AppInfoBanner(
+        icon: Icon(
+          Icons.celebration,
+          color: AppMd3Colors.primaryContainer,
+        ),
+        title: "You're in good shape!",
+        description: 'No urgent settlements pending today.',
+      );
+    }
+
+    return AppInfoBanner(
+      icon: const Icon(
+        Icons.account_balance_wallet,
+        color: AppSemanticColors.negativeText,
+      ),
+      title: 'Settlements pending',
+      background: AppSemanticColors.negativeContainer,
+      descriptionWidget: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (data.iOwe > 0)
+            Text(
+              'You owe \$${data.iOwe.toStringAsFixed(2)}',
+              style: AppTypography.bodySm(
+                color: AppSemanticColors.negativeText,
+              ),
+            ),
+          if (data.owedToMe > 0)
+            Text(
+              'You are owed \$${data.owedToMe.toStringAsFixed(2)}',
+              style: AppTypography.bodySm(
+                color: AppSemanticColors.positiveText,
+              ),
+            ),
+          Text(
+            '${data.pendingCount} pending settlement${data.pendingCount == 1 ? '' : 's'}',
+            style: AppTypography.bodySm(color: AppSemanticColors.slate600),
+          ),
+        ],
       ),
     );
   }

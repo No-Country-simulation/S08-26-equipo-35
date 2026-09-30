@@ -14,7 +14,7 @@ Aplicación móvil para dividir gastos entre grupos de personas. Un usuario regi
   - `app/models/`: Modelos SQLAlchemy (users, groups, group_members, expenses, expense_splits, settlements)
   - `app/schemas/`: Esquemas Pydantic (auth, groups, expenses, settlements, balances, users)
   - `app/services/`: Lógica de negocio (auth, groups, expenses, settlements, users)
-  - `app/ws/`: WebSocket para tiempo real (pendiente de implementación)
+  - `app/ws/`: ConnectionManager, autenticación WebSocket y Redis Pub/Sub para tiempo real
 - **Datos**: PostgreSQL 15 (fuente de verdad) + Redis 7 (pub/sub, cache)
 - **Push**: Firebase Cloud Messaging (FCM) — pendiente
 - **Plataforma**: Docker Compose (dev) + GitHub Actions (CI/CD) — CI/CD pendiente
@@ -103,7 +103,8 @@ pytest -q
 │   │   ├── groups.py      # CRUD de grupos
 │   │   ├── expenses.py    # CRUD de gastos
 │   │   ├── settlements.py # CRUD de liquidaciones
-│   │   └── users.py       # Perfil de usuario
+│   │   ├── users.py       # Perfil de usuario
+│   │   └── ws.py          # Endpoint WebSocket por grupo
 │   ├── core/
 │   │   ├── config.py      # Configuración
 │   │   └── security.py    # JWT, hashing
@@ -113,9 +114,14 @@ pytest -q
 │   ├── models/            # 6 modelos SQLAlchemy
 │   ├── schemas/           # Schemas Pydantic (auth, groups, expenses, settlements, balances, users)
 │   ├── services/          # Lógica de negocio (auth, groups, expenses, settlements, users)
-│   └── ws/                # WebSocket (vacío, pendiente)
+│   └── ws/
+│       ├── __init__.py    # Componentes WebSocket
+│       ├── auth.py        # Autenticación JWT y membresía para WebSocket
+│       ├── manager.py     # Conexiones activas y broadcast por grupo
+│       └── redis_pubsub.py # Publicación y suscripción de eventos con Redis
 ├── docs/
-│   └── images/            # Diagramas de arquitectura, data model, flow, tracking plan
+│   ├── images/            # Diagramas de arquitectura, data model, flow, tracking plan
+│   └── websocket.md       # Contrato de eventos en tiempo real
 └── tests/                 # Tests unitarios e integración
 ```
 
@@ -132,6 +138,7 @@ pytest -q
 - Sistema de balances netos por usuario
 - Sistema de splits: EQUAL, EXACT_AMOUNT
 - Docker Compose (API + PostgreSQL 15 + Redis 7)
+- WebSocket real-time sync por grupo, autenticación JWT y Redis Pub/Sub
 - Script de seed con datos de prueba
 - Tests unitarios e integración (groups, expenses, settlements, users, balances)
 
@@ -139,7 +146,6 @@ pytest -q
 - Ninguno (último PR mergeado)
 
 ### Pendiente
-- **WebSocket real-time sync** (issue #10) ← siguiente tarea
 - Split type: PERCENTAGE
 - Algoritmo de liquidación (min-cash-flow)
 - Integración FCM (push notifications)
@@ -214,14 +220,8 @@ Cuando un miembro registra un gasto:
 - **Semana 3**: FCM, tests, integración Flutter
 - **Semana 4**: Bug fixes, CI/CD, performance, demo
 
-## 11. Próximos Pasos (issue #10)
+## 11. WebSocket en tiempo real
 
-Implementar **WebSocket real-time sync**:
-
-- `app/ws/manager.py` — ConnectionManager (connect, disconnect, broadcast)
-- `app/ws/redis_pubsub.py` — Redis pub/sub por grupo
-- `app/api/v1/ws.py` — Endpoint `WS /ws/groups/{group_id}?token=<JWT>`
-- Emisión de eventos desde `expense_service.py` y `settlement_service.py`
-- Documentar contrato en `docs/websocket.md`
-
-Referencia completa: https://github.com/No-Country-simulation/S08-26-equipo-35/issues/10
+El endpoint `WS /ws/groups/{group_id}?token=<JWT>` autentica al usuario y valida
+su membresía antes de aceptar la conexión. Los eventos se publican por Redis
+Pub/Sub y el contrato para Flutter está en `docs/websocket.md`.

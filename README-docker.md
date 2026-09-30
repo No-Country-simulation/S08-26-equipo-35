@@ -118,12 +118,6 @@ redis-cli -h localhost -p 6379
 docker compose exec redis redis-cli
 ```
 
-### Verificar que Redis está vivo
-```bash
-docker compose exec redis redis-cli ping
-# Debe responder: PONG
-```
-
 ## 📂 Estructura del stack
 
 | Servicio | Imagen | Puerto host | Puerto interno | Volumen |

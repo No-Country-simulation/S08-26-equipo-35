@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from passlib import exc
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import RedisError
@@ -79,7 +80,12 @@ async def subscribe_to_groups(
             async for message in pubsub.listen():
                 if message.get("type") != "pmessage":
                     continue
+
+                if backoff_seconds > 1:
+                    logger.info("Redis subscription reconnected")
+                
                 backoff_seconds = 1
+                
                 channel = message.get("channel", "")
                 group_value = channel.removeprefix("group:")
                 try:
@@ -95,7 +101,6 @@ async def subscribe_to_groups(
             logger.warning(
                 "Redis subscription failed; retrying in %s seconds",
                 backoff_seconds,
-                exc_info=True,
             )
         finally:
             try:

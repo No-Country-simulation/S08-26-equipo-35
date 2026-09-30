@@ -52,6 +52,14 @@ docker compose logs -f
 docker compose logs -f api
 ```
 
+### Verificar Redis
+
+```bash
+docker compose exec redis redis-cli ping
+```
+
+La respuesta esperada es `PONG`.
+
 ### Detener el stack
 
 ```bash

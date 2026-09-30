@@ -38,7 +38,7 @@ class DebtResponse(BaseModel):
     creditor_user_id: UUID
     creditor_name: str
     amount: Decimal
-    status: Literal["PENDING", "PAID"] = "PENDING"
+    status: Literal["PENDING", "PAID", "CANCELLED"] = "PENDING"
     expenses: list[DebtExpenseBreakdown] = []
 
 

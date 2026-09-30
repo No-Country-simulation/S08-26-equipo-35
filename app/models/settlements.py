@@ -8,6 +8,7 @@ from app.db.base import Base
 class SettlementStatus(enum.Enum):
     PENDING = "PENDING"
     PAID = "PAID"
+    CANCELLED = "CANCELLED"
     # Valor legacy: existia antes del modulo settlements.
     # Se trata como PAID en toda la logica nueva.
     CONFIRMED = "CONFIRMED"

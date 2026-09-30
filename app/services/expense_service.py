@@ -1,5 +1,6 @@
 from decimal import Decimal
 from uuid import UUID
+import logging
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -15,6 +16,9 @@ from app.schemas.expenses import (
 
 
 CENT = Decimal("0.01")
+
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -301,8 +305,19 @@ def create_expense(
             new_expense.expense_id
         )
 
-    except Exception:
+    except HTTPException:
+        # No enmascarar 404/400/403 lanzados por get_expense_by_id u otros helpers
+        raise
+    except Exception as exc:
         db.rollback()
+        logger.exception(
+            "Error al crear gasto group_id=%s payer=%s total=%s split_type=%s: %s",
+            group_id,
+            expense_data.payer_user_id,
+            expense_data.total_amount,
+            expense_data.split_type,
+            exc,
+        )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -535,8 +550,15 @@ def update_expense(
             expense_id
         )
 
-    except Exception:
+    except HTTPException:
+        raise
+    except Exception as exc:
         db.rollback()
+        logger.exception(
+            "Error al actualizar gasto expense_id=%s: %s",
+            expense_id,
+            exc,
+        )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -596,8 +618,15 @@ def delete_expense(
             "message": "Gasto eliminado correctamente"
         }
 
-    except Exception:
+    except HTTPException:
+        raise
+    except Exception as exc:
         db.rollback()
+        logger.exception(
+            "Error al eliminar gasto expense_id=%s: %s",
+            expense_id,
+            exc,
+        )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

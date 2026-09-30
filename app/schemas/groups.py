@@ -54,3 +54,31 @@ class UpdateGroup(BaseModel):
 class UpdateGroupResponse(BaseModel):
 	group_name: str | None=None
 	status: GroupStatus | None=None
+
+
+#==================================================================================================
+# Members CRUD — agregar por user_id o email (exactamente uno)
+
+class AddGroupMemberRequest(BaseModel):
+	user_id: UUID | None = None
+	email: str | None = None
+
+	@field_validator("email")
+	@classmethod
+	def email_normalized(cls, v: str | None) -> str | None:
+		if v is None:
+			return v
+		v = v.strip().lower()
+		if not v:
+			raise ValueError("The email is empty")
+		if "@" not in v:
+			raise ValueError("Invalid email")
+		return v
+
+	def model_post_init(self, __context) -> None:
+		if (self.user_id is None) == (self.email is None):
+			raise ValueError("Debe enviar user_id o email (solo uno)")
+
+
+class RemoveGroupMemberResponse(BaseModel):
+	message: str

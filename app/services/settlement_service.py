@@ -13,6 +13,7 @@ from app.models.group_members import GroupMember
 from app.models.groups import Group
 from app.models.settlements import Settlement, SettlementStatus
 from app.models.users import User
+from app.ws.redis_pubsub import publish_event
 from app.services.expense_service import get_group_or_404, validate_group_member
 
 CENT = Decimal("0.01")
@@ -20,6 +21,17 @@ TOLERANCE = Decimal("0.01")
 
 # Estados que descuentan deuda (PAID es el actual, CONFIRMED es legacy).
 SETTLED_STATUSES = (SettlementStatus.PAID, SettlementStatus.CONFIRMED)
+
+
+def _settlement_payload(settlement: Settlement) -> dict:
+    return {
+        "settlement_id": str(settlement.settlement_id),
+        "group_id": str(settlement.group_id),
+        "payer_user_id": str(settlement.payer_user_id),
+        "receiver_user_id": str(settlement.receiver_user_id),
+        "amount": str(settlement.amount),
+        "status": settlement.status.value,
+    }
 
 
 def _quant(value: Decimal) -> Decimal:
@@ -394,6 +406,9 @@ def register_payment(
     db.add(settlement)
     db.commit()
     db.refresh(settlement)
+    publish_event(
+        group_id, "settlement.created", _settlement_payload(settlement)
+    )
     return settlement
 
 
@@ -458,6 +473,16 @@ def mark_payment_paid(
     except Exception:
         db.rollback()
 
+    publish_event(
+        settlement.group_id,
+        "settlement.paid",
+        _settlement_payload(settlement),
+    )
+    publish_event(
+        settlement.group_id,
+        "balance.updated",
+        {"group_id": str(settlement.group_id)},
+    )
     return settlement
 
 
@@ -482,6 +507,8 @@ def cancel_payment(
         "No tienes permisos sobre este pago",
     )
 
+    previous_status = settlement.status
+
     if settlement.payer_user_id != current_user_id and (
         settlement.receiver_user_id != current_user_id
     ):
@@ -505,6 +532,17 @@ def cancel_payment(
     settlement.settled_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(settlement)
+    publish_event(
+        settlement.group_id,
+        "settlement.cancelled",
+        _settlement_payload(settlement),
+    )
+    if previous_status == SettlementStatus.PAID:
+        publish_event(
+            settlement.group_id,
+            "balance.updated",
+            {"group_id": str(settlement.group_id)},
+        )
     return settlement
 
 

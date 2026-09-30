@@ -1,5 +1,6 @@
 # tests/conftest.py
 import pytest
+import asyncio
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.testclient import TestClient
@@ -54,7 +55,14 @@ def db_session(db_engine):
 
 
 @pytest.fixture(scope="function")
-def client(db_session):
+def client(db_session, monkeypatch):
+    import app.main as main_module
+
+    async def wait_for_shutdown(redis_client):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(main_module, "subscribe_to_groups", wait_for_shutdown)
+
     def override_get_db():
         yield db_session
 
@@ -62,6 +70,16 @@ def client(db_session):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def disable_redis_publishing_in_tests(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.expense_service.publish_event", lambda *args: None
+    )
+    monkeypatch.setattr(
+        "app.services.settlement_service.publish_event", lambda *args: None
+    )
 
 
 # Fixture para un usuario de prueba autenticado

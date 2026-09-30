@@ -7,7 +7,7 @@ import random
 import uuid
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from faker import Faker
 
 # Ajustar el path para que Python encuentre los módulos de la aplicación

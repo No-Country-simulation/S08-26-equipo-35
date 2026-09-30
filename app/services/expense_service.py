@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.expenses import Expense, SplitType
+from app.ws.redis_pubsub import publish_event
 from app.models.expense_splits import ExpenseSplit
 from app.models.groups import Group
 from app.models.group_members import GroupMember
@@ -19,6 +20,15 @@ CENT = Decimal("0.01")
 
 
 logger = logging.getLogger(__name__)
+def _publish_expense_change(
+    group_id: UUID, event_type: str, payload: dict
+) -> None:
+    publish_event(group_id, event_type, payload)
+    publish_event(
+        group_id,
+        "balance.updated",
+        {"group_id": str(group_id)},
+    )
 
 
 # ============================================================
@@ -299,11 +309,24 @@ def create_expense(
 
         db.commit()
         db.refresh(new_expense)
-
-        return get_expense_by_id(
+        result = get_expense_by_id(
             db,
             new_expense.expense_id
         )
+        split_type = result["split_type"]
+        _publish_expense_change(
+            group_id,
+            "expense.created",
+            {
+                "expense_id": str(result["expense_id"]),
+                "group_id": str(group_id),
+                "payer_user_id": str(result["payer_user_id"]),
+                "title": result["title"],
+                "total_amount": str(result["total_amount"]),
+                "split_type": getattr(split_type, "value", str(split_type)),
+            },
+        )
+        return result
 
     except HTTPException:
         # No enmascarar 404/400/403 lanzados por get_expense_by_id u otros helpers
@@ -544,11 +567,24 @@ def update_expense(
 
         db.commit()
         db.refresh(expense)
-
-        return get_expense_by_id(
+        result = get_expense_by_id(
             db,
             expense_id
         )
+        split_type = result["split_type"]
+        _publish_expense_change(
+            expense.group_id,
+            "expense.updated",
+            {
+                "expense_id": str(expense_id),
+                "group_id": str(expense.group_id),
+                "payer_user_id": str(result["payer_user_id"]),
+                "title": result["title"],
+                "total_amount": str(result["total_amount"]),
+                "split_type": getattr(split_type, "value", str(split_type)),
+            },
+        )
+        return result
 
     except HTTPException:
         raise
@@ -597,6 +633,8 @@ def delete_expense(
         "No tienes permisos para eliminar este gasto"
     )
 
+    group_id = expense.group_id
+
     try:
         # Primero eliminar divisiones
         (
@@ -613,7 +651,11 @@ def delete_expense(
         db.delete(expense)
 
         db.commit()
-
+        _publish_expense_change(
+            group_id,
+            "expense.deleted",
+            {"expense_id": str(expense_id), "group_id": str(group_id)},
+        )
         return {
             "message": "Gasto eliminado correctamente"
         }

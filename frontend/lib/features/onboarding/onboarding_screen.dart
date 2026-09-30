@@ -10,6 +10,7 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/api_error_ui.dart';
 import '../auth/data/auth_repository.dart';
 import '../../router/app_router.dart';
 
@@ -150,12 +151,10 @@ class _AuthCardState extends State<_AuthCard> {
       Navigator.pushReplacementNamed(context, AppRoutes.home);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    } catch (_) {
+      showApiError(context, e);
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo conectar con el servidor.')),
-      );
+      showApiError(context, error);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

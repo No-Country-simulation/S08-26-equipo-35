@@ -9,6 +9,7 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/api_error_ui.dart';
 import '../../router/app_router.dart';
 import '../auth/data/auth_repository.dart';
 import '../auth/data/auth_session.dart';
@@ -72,14 +73,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
-    } catch (_) {
+      showApiError(context, e);
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo conectar con el servidor.')),
-      );
+      showApiError(context, error);
     } finally {
       if (mounted) setState(() => _isSavingProfile = false);
     }
@@ -117,14 +114,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
-    } catch (_) {
+      showApiError(context, e);
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo conectar con el servidor.')),
-      );
+      showApiError(context, error);
     } finally {
       if (mounted) setState(() => _isSavingPassword = false);
     }
@@ -390,13 +383,13 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        _error = apiErrorMessage(e);
         _isSubmitting = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = 'No se pudo conectar con el servidor.';
+        _error = apiErrorMessage(error);
         _isSubmitting = false;
       });
     }

@@ -8,6 +8,7 @@ import '../../design_system/components/ui/chips/app_filter_chip.dart';
 import '../../design_system/components/ui/chips/member_chip.dart';
 import '../../design_system/components/ui/headers/app_cover_header.dart';
 import '../../design_system/components/ui/row/meta_row.dart';
+import '../../design_system/components/ui/buttons/app_text_action.dart';
 import '../../design_system/components/ui/titles/app_quick_action_tile.dart';
 import '../../design_system/components/ui/titles/app_editable_title.dart';
 import '../../design_system/navigations/app_top_bar.dart';
@@ -15,8 +16,10 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../core/utils/category_visual.dart';
+import '../../core/utils/settlement_status.dart';
 import '../../core/utils/date_format.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/api_error_ui.dart';
 import '../../design_system/components/ui/text_fields/app_text_field.dart';
 import '../../router/app_router.dart';
 import '../auth/data/auth_session.dart';
@@ -35,6 +38,8 @@ class _GroupDetailsData {
     required this.debts,
     required this.settlementStatus,
     this.userProfiles = const {},
+    this.expensesError,
+    this.settlementsError,
   });
   final GroupDetail detail;
   final List<Expense> expenses;
@@ -42,6 +47,18 @@ class _GroupDetailsData {
   final List<DebtResponse> debts;
   final GroupSettlementStatus settlementStatus;
   final Map<String, UserProfile> userProfiles; // userId -> Profile cache
+
+  /// Error de GET /groups/{id}/expenses. El grupo sigue mostrando su
+  /// cabecera y miembros; solo la lista de gastos se reemplaza por un aviso.
+  final Object? expensesError;
+
+  /// Error de /settlements y /settlements/status. Cuando viene, `balances`,
+  /// `debts` y `settlementStatus` están vacíos y el bloque de balances se
+  /// reemplaza por un aviso.
+  final Object? settlementsError;
+
+  bool get hasExpenses => expensesError == null;
+  bool get hasSettlements => settlementsError == null;
 }
 
 /// Group Details conectado a GET /groups/detail/{id}, GET /groups/{id}/expenses,
@@ -70,32 +87,63 @@ class _GroupDetailsState extends State<GroupDetails> {
     _future = _load();
   }
 
+  /// Solo `groupDetail` es imprescindible: sin él no hay grupo que mostrar.
+  /// Gastos y settlements van en bloques separados a propósito, porque la
+  /// API puede devolver 500 en cualquiera de los dos y la pantalla degrada
+  /// mostrando el resto en vez de caer en un error genérico sin contexto.
   Future<_GroupDetailsData> _load() async {
-    final results = await Future.wait([
-      GroupRepository.instance.groupDetail(widget.groupId),
-      ExpenseRepository.instance.listGroupExpenses(widget.groupId),
-      GroupRepository.instance.getSettlements(widget.groupId),
-      GroupRepository.instance.getSettlementStatus(widget.groupId),
-    ]);
-    final detail = results[0] as GroupDetail;
-    final expenses = results[1] as List<Expense>;
-    final bundle = results[2] as GroupDebtsBundle;
-    final settlementStatus = results[3] as GroupSettlementStatus;
+    final detail = await GroupRepository.instance.groupDetail(widget.groupId);
 
-    // Nombres de los miembros: GET /balances (vía /settlements) trae
-    // {user_id, name} de cada uno — GET /users/{id} no existe en la API.
-    final Map<String, UserProfile> userProfiles = {
-      for (final b in bundle.balances)
-        b.userId: UserProfile(userId: b.userId, name: b.name, email: ''),
-    };
+    var expenses = <Expense>[];
+    Object? expensesError;
+    try {
+      expenses = await ExpenseRepository.instance.listGroupExpenses(
+        widget.groupId,
+      );
+    } catch (error) {
+      expensesError = error;
+    }
+
+    var balances = <BalanceResponse>[];
+    var debts = <DebtResponse>[];
+    var settlementStatus = GroupSettlementStatus(
+      groupId: widget.groupId,
+      isSettled: true,
+      pendingCount: 0,
+      totalPendingAmount: '0',
+      debts: const [],
+    );
+    var userProfiles = <String, UserProfile>{};
+    Object? settlementsError;
+
+    try {
+      final settlements = await Future.wait([
+        GroupRepository.instance.getSettlements(widget.groupId),
+        GroupRepository.instance.getSettlementStatus(widget.groupId),
+      ]);
+      final bundle = settlements[0] as GroupDebtsBundle;
+      balances = bundle.balances;
+      debts = bundle.debts;
+      settlementStatus = settlements[1] as GroupSettlementStatus;
+      // Nombres de los miembros: GET /balances (vía /settlements) trae
+      // {user_id, name} de cada uno — GET /users/{id} no existe en la API.
+      userProfiles = {
+        for (final b in balances)
+          b.userId: UserProfile(userId: b.userId, name: b.name, email: ''),
+      };
+    } catch (error) {
+      settlementsError = error;
+    }
 
     return _GroupDetailsData(
       detail: detail,
       expenses: expenses,
-      balances: bundle.balances,
-      debts: bundle.debts,
+      balances: balances,
+      debts: debts,
       settlementStatus: settlementStatus,
       userProfiles: userProfiles,
+      expensesError: expensesError,
+      settlementsError: settlementsError,
     );
   }
 
@@ -224,13 +272,11 @@ class _GroupDetailsState extends State<GroupDetails> {
           if (myUserId != null) {
             final myDebts = data.debts
                 .where((d) =>
-                    d.status.toUpperCase() != 'PAID' &&
-                    d.debtorUserId == myUserId)
+                    isPendingStatus(d.status) && d.debtorUserId == myUserId)
                 .toList();
             final myCredits = data.debts
                 .where((d) =>
-                    d.status.toUpperCase() != 'PAID' &&
-                    d.creditorUserId == myUserId)
+                    isPendingStatus(d.status) && d.creditorUserId == myUserId)
                 .toList();
 
             if (myDebts.isNotEmpty) {
@@ -326,51 +372,64 @@ class _GroupDetailsState extends State<GroupDetails> {
                     ),
                     const SizedBox(height: AppSpacing.sm),
 
-                    // Balance state from API settlement data
-                    if (myUserId == null)
-                      const AppInfoBanner(
-                        icon: Icon(
-                          Icons.help_outline,
-                          color: AppSemanticColors.slate400,
-                        ),
-                        title: 'Balance unavailable',
-                        description: 'No active session user to show balance.',
-                        background: AppSemanticColors.slate100,
+                    // Bloque de settlements. Si esas llamadas fallaron
+                    // (la API viene devolviendo 500 en /settlements), se
+                    // muestra el aviso y el resto de la pantalla sigue
+                    // viva en vez de caer en la pantalla de error general.
+                    if (!data.hasSettlements)
+                      _SettlementsUnavailableNotice(
+                        error: data.settlementsError!,
+                        onRetry: _retry,
                       )
-                    else if (apiBalanceAmount != null)
-                      _BalanceBanner(
-                        label: apiBalanceLabel,
-                        amount: apiBalanceAmount,
-                        background: apiBalanceBackground,
-                        textColor: apiBalanceTextColor,
-                      )
-                    else
-                      AppInfoBanner(
-                        icon: const Icon(
-                          Icons.check_circle,
-                          color: AppSemanticColors.positiveText,
-                        ),
-                        title: apiBalanceLabel,
-                        description: 'No pending settlements in this group.',
-                        background: apiBalanceBackground,
-                      ),
-                    const SizedBox(height: AppSpacing.sm),
+                    else ...[
+                      const SizedBox(height: AppSpacing.sm),
 
-                    // Settlement status badge
-                    _SettlementStatusBadge(settlementStatus: settlementStatus),
-
-                    // Debt list visualization (bundle de /settlements, que
-                    // siempre trae la lista; settlementStatus.debts puede
-                    // venir vacío por default en el schema)
-                    if (myUserId != null && data.debts.isNotEmpty)
-                      _DebtListViewer(debts: data.debts)
-                    else
-                      Text(
-                        'No debts found.',
-                        style: AppTypography.bodyMd(
-                          color: AppSemanticColors.slate600,
+                      // Balance state from API settlement data
+                      if (myUserId == null)
+                        const AppInfoBanner(
+                          icon: Icon(
+                            Icons.help_outline,
+                            color: AppSemanticColors.slate400,
+                          ),
+                          title: 'Balance unavailable',
+                          description: 'No active session user to show balance.',
+                          background: AppSemanticColors.slate100,
+                        )
+                      else if (apiBalanceAmount != null)
+                        _BalanceBanner(
+                          label: apiBalanceLabel,
+                          amount: apiBalanceAmount,
+                          background: apiBalanceBackground,
+                          textColor: apiBalanceTextColor,
+                        )
+                      else
+                        AppInfoBanner(
+                          icon: const Icon(
+                            Icons.check_circle,
+                            color: AppSemanticColors.positiveText,
+                          ),
+                          title: apiBalanceLabel,
+                          description: 'No pending settlements in this group.',
+                          background: apiBalanceBackground,
                         ),
-                      ),
+                      const SizedBox(height: AppSpacing.sm),
+
+                      // Settlement status badge
+                      _SettlementStatusBadge(settlementStatus: settlementStatus),
+
+                      // Debt list visualization (bundle de /settlements, que
+                      // siempre trae la lista; settlementStatus.debts puede
+                      // venir vacío por default en el schema)
+                      if (myUserId != null && data.debts.isNotEmpty)
+                        _DebtListViewer(debts: data.debts)
+                      else
+                        Text(
+                          'No debts found.',
+                          style: AppTypography.bodyMd(
+                            color: AppSemanticColors.slate600,
+                          ),
+                        ),
+                    ],
                     const SizedBox(height: AppSpacing.sm),
 
                     Text(
@@ -448,59 +507,78 @@ class _GroupDetailsState extends State<GroupDetails> {
                     ),
                     const SizedBox(height: AppSpacing.xl),
 
-                    SectionHeader(
-                      title: 'Recent Expenses',
-                      trailing: Text(
-                        '${expenses.length} total',
-                        style: AppTypography.bodySm(
-                          color: AppSemanticColors.slate400,
+                    if (!data.hasExpenses) ...[
+                      SectionHeader(
+                        title: 'Recent Expenses',
+                        trailing: AppTextAction(
+                          label: 'Retry',
+                          emphasized: true,
+                          onPressed: _retry,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          for (final category in categories) ...[
-                            AppFilterChip(
-                              label: category,
-                              selected: _categoryFilter == category,
-                              dotColor: category == 'All'
-                                  ? null
-                                  : categoryVisual(category).$3,
-                              onTap: () =>
-                                  setState(() => _categoryFilter = category),
-                            ),
-                            const SizedBox(width: AppSpacing.xs),
-                          ],
-                        ],
+                      const SizedBox(height: AppSpacing.md),
+                      _SettlementsUnavailableNotice(
+                        error: data.expensesError!,
+                        onRetry: _retry,
+                        title: 'Expenses unavailable',
                       ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-
-                    if (sorted.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: AppSpacing.lg,
-                        ),
-                        child: Text(
-                          'No expenses yet.',
-                          style: AppTypography.bodyMd(
-                            color: AppSemanticColors.slate600,
+                      const SizedBox(height: AppSpacing.xl),
+                    ] else ...[
+                      SectionHeader(
+                        title: 'Recent Expenses',
+                        trailing: Text(
+                          '${expenses.length} total',
+                          style: AppTypography.bodySm(
+                            color: AppSemanticColors.slate400,
                           ),
                         ),
-                      )
-                    else
-                      for (final expense in sorted) ...[
-                        _buildExpenseRow(
-                          context,
-                          expense,
-                          myUserId,
-                          memberCount,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final category in categories) ...[
+                              AppFilterChip(
+                                label: category,
+                                selected: _categoryFilter == category,
+                                dotColor: category == 'All'
+                                    ? null
+                                    : categoryVisual(category).$3,
+                                onTap: () => setState(
+                                  () => _categoryFilter = category,
+                                ),
+                              ),
+                              const SizedBox(width: AppSpacing.xs),
+                            ],
+                          ],
                         ),
-                        const SizedBox(height: AppSpacing.xs),
-                      ],
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+
+                      if (sorted.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: AppSpacing.lg,
+                          ),
+                          child: Text(
+                            'No expenses yet.',
+                            style: AppTypography.bodyMd(
+                              color: AppSemanticColors.slate600,
+                            ),
+                          ),
+                        )
+                      else
+                        for (final expense in sorted) ...[
+                          _buildExpenseRow(
+                            context,
+                            expense,
+                            myUserId,
+                            memberCount,
+                          ),
+                          const SizedBox(height: AppSpacing.xs),
+                        ],
+                    ],
                     const SizedBox(height: 80),
                   ],
                 ),
@@ -640,13 +718,13 @@ class _DeleteGroupDialogState extends State<_DeleteGroupDialog> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        _error = apiErrorMessage(e);
         _isSubmitting = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = 'No se pudo conectar con el servidor.';
+        _error = apiErrorMessage(error);
         _isSubmitting = false;
       });
     }
@@ -740,13 +818,13 @@ class _RenameGroupDialogState extends State<_RenameGroupDialog> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        _error = apiErrorMessage(e);
         _isSubmitting = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = 'No se pudo conectar con el servidor.';
+        _error = apiErrorMessage(error);
         _isSubmitting = false;
       });
     }
@@ -789,6 +867,40 @@ class _RenameGroupDialogState extends State<_RenameGroupDialog> {
               : const Text('Save'),
         ),
       ],
+    );
+  }
+}
+
+/// Aviso de un bloque de la pantalla que no se pudo cargar. El mensaje sale
+/// de `apiErrorMessage` para no mentir: un 500 del backend no es lo mismo que
+/// "no se pudo conectar".
+class _SettlementsUnavailableNotice extends StatelessWidget {
+  const _SettlementsUnavailableNotice({
+    required this.error,
+    required this.onRetry,
+    this.title = 'Settlements unavailable',
+  });
+
+  final Object error;
+  final VoidCallback onRetry;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppInfoBanner(
+      icon: const Icon(
+        Icons.cloud_off,
+        color: AppSemanticColors.slate400,
+        size: 20,
+      ),
+      title: title,
+      description: apiErrorMessage(error),
+      background: AppSemanticColors.slate100,
+      trailing: AppTextAction(
+        label: 'Retry',
+        emphasized: true,
+        onPressed: onRetry,
+      ),
     );
   }
 }
@@ -861,14 +973,13 @@ class _DebtListViewer extends StatelessWidget {
   Widget build(BuildContext context) {
     final myUserId = AuthSession.instance.userId;
     // Deuda = el DEBTOR le debe al CREDITOR. Si soy debtor, debo yo;
-    // si soy creditor, me deben a mí. PAID ya no está pendiente.
+    // si soy creditor, me deben a mí. Saldado (PAID) o cancelado ya no
+    // está pendiente — ver `isPendingStatus`.
     final owe = debts
-        .where((d) =>
-            d.status.toUpperCase() != 'PAID' && d.debtorUserId == myUserId)
+        .where((d) => isPendingStatus(d.status) && d.debtorUserId == myUserId)
         .toList();
     final owed = debts
-        .where((d) =>
-            d.status.toUpperCase() != 'PAID' && d.creditorUserId == myUserId)
+        .where((d) => isPendingStatus(d.status) && d.creditorUserId == myUserId)
         .toList();
 
     return Card(

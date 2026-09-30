@@ -99,7 +99,9 @@ class DebtResponse {
       creditorUserId: json['creditor_user_id'] as String,
       creditorName: json['creditor_name'] as String,
       amount: json['amount'] as String,
-      status: json['status'] as String,
+      // El schema marca `status` con default "PENDING": si viene ausente,
+      // lo asumimos pendiente en vez de castear null a String.
+      status: json['status'] as String? ?? 'PENDING',
       expenses: (json['expenses'] as List<dynamic>? ?? const [])
           .map((e) => DebtExpenseBreakdown.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -178,7 +180,11 @@ class SettlementResponse {
   final String receiverUserId;
   final String amount;
   final String status;
-  final DateTime settledAt;
+
+  /// Null mientras el pago está PENDING: todavía no se liquidó, así que no
+  /// hay fecha. El OpenAPI lo marca requerido, pero parsearlo a ciegas con
+  /// `DateTime.parse` revienta la pantalla si la API manda null.
+  final DateTime? settledAt;
 
   factory SettlementResponse.fromJson(Map<String, dynamic> json) {
     return SettlementResponse(
@@ -187,10 +193,17 @@ class SettlementResponse {
       payerUserId: json['payer_user_id'] as String,
       receiverUserId: json['receiver_user_id'] as String,
       amount: json['amount'] as String,
-      status: json['status'] as String,
-      settledAt: DateTime.parse(json['settled_at'] as String),
+      status: json['status'] as String? ?? 'PENDING',
+      settledAt: _parseDateTimeOrNull(json['settled_at']),
     );
   }
+}
+
+/// Parsea una fecha ISO que puede venir `null` o ausente. Devuelve null en
+/// vez de tirar, para que un campo opcional de la API no rompa la pantalla.
+DateTime? _parseDateTimeOrNull(dynamic value) {
+  if (value is! String || value.isEmpty) return null;
+  return DateTime.tryParse(value);
 }
 
 // GroupDebtsBundle: respuesta de GroupDebtsResponse — GET /groups/{id}/debts,

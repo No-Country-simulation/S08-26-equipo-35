@@ -20,6 +20,7 @@ import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../core/utils/date_format.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/api_error_ui.dart';
 import '../../design_system/components/ui/text_fields/app_text_field.dart';
 import '../expenses/data/expense.dart';
 import '../expenses/data/expense_repository.dart';
@@ -644,13 +645,13 @@ class _DeleteExpenseDialogState extends State<_DeleteExpenseDialog> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        _error = apiErrorMessage(e);
         _isSubmitting = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = 'No se pudo conectar con el servidor.';
+        _error = apiErrorMessage(error);
         _isSubmitting = false;
       });
     }
@@ -821,13 +822,13 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        _error = apiErrorMessage(e);
         _isSubmitting = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = 'No se pudo conectar con el servidor.';
+        _error = apiErrorMessage(error);
         _isSubmitting = false;
       });
     }

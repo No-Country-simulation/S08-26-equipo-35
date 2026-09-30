@@ -15,9 +15,11 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/api_error_ui.dart';
 import '../auth/data/auth_session.dart';
 import '../expenses/data/expense.dart';
 import '../expenses/data/expense_repository.dart';
+import '../expenses/domain/equal_split.dart';
 import '../expenses/payer_picker_dialog.dart';
 import '../groups/data/group_detail.dart';
 import '../groups/data/group_repository.dart';
@@ -169,11 +171,6 @@ class _LogExpenseState extends State<LogExpense> {
     }
   }
 
-  double _equalShare() {
-    if (_selectedMemberIds.isEmpty) return 0;
-    return _totalAmount / _selectedMemberIds.length;
-  }
-
   double _customAllocatedTotal() {
     var sum = 0.0;
     for (final id in _selectedMemberIds) {
@@ -207,13 +204,15 @@ class _LogExpenseState extends State<LogExpense> {
     final List<({String userId, double amountOwed})> splits;
 
     if (splitType == SplitType.equal) {
-      final share = _equalShare();
-      splits = _selectedMemberIds
-          .map((id) => (userId: id, amountOwed: share))
-          .toList();
+      // Reparto en centavos que suma exacto — ver `equalSplit`. Mandar
+      // `total / n` crudo genera 33.33333333333333 y la suma de los splits
+      // no da el total (ver el bug de precisión en el handoff).
+      splits = equalSplit(total, _selectedMemberIds.toList());
     } else {
       final allocated = _customAllocatedTotal();
-      if ((allocated - total).abs() > 0.01) {
+      // Tolerancia de medio centavo: los montos son de 2 decimales, así que
+      // un desfasaje de 1 centavo sí es un error real.
+      if ((allocated - total).abs() > 0.005) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Los montos personalizados no suman el total.'),
@@ -248,14 +247,10 @@ class _LogExpenseState extends State<LogExpense> {
       Navigator.pop(context, true);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
-    } catch (_) {
+      showApiError(context, e);
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo conectar con el servidor.')),
-      );
+      showApiError(context, error);
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }

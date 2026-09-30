@@ -120,7 +120,15 @@ class GroupRepository {
     return SettlementResponse.fromJson(response as Map<String, dynamic>);
   }
 
-  Future<void> paySettlement(String settlementId) async {
-    await ApiClient.patch('/payments/$settlementId/pay', {}, authenticated: true);
+  /// Confirma un pago pendiente. La API devuelve el settlement ya saldado
+  /// (status y fecha) — se propaga para poder refrescar la fila sin volver
+  /// a pedir la lista entera.
+  Future<SettlementResponse> paySettlement(String settlementId) async {
+    final response = await ApiClient.patch(
+      '/payments/$settlementId/pay',
+      {},
+      authenticated: true,
+    );
+    return SettlementResponse.fromJson(response);
   }
 }

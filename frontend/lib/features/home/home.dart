@@ -14,6 +14,8 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../core/network/api_client.dart';
+import '../../core/utils/settlement_status.dart';
+import '../../core/network/api_error_ui.dart';
 import '../../router/app_router.dart';
 import '../auth/data/auth_session.dart';
 import '../expenses/data/expense.dart';
@@ -128,7 +130,7 @@ class _HomeState extends State<Home> {
         // por si acaso). PAID no cuenta como pendiente.
         if (myUserId != null) {
           for (final d in myDebts) {
-            if (d.status.toUpperCase() == 'PAID') continue;
+            if (!isPendingStatus(d.status)) continue;
             final amount = double.tryParse(d.amount) ?? 0;
             if (d.debtorUserId == myUserId) {
               iOwe += amount;
@@ -744,13 +746,13 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        _error = apiErrorMessage(e);
         _isSubmitting = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = 'No se pudo conectar con el servidor.';
+        _error = apiErrorMessage(error);
         _isSubmitting = false;
       });
     }

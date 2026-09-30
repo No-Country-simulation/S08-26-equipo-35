@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../core/network/api_error_ui.dart';
 import '../../core/utils/category_visual.dart';
+import '../../core/utils/settlement_status.dart';
 import '../../design_system/components/ui/avatars/avatar_stack.dart';
 import '../../design_system/components/ui/badges/balance_badge.dart';
+import '../../design_system/components/ui/banners/app_info_banner.dart';
 import '../../design_system/components/ui/banners/settlement_cta_card.dart';
 import '../../design_system/components/ui/buttons/app_button.dart';
 import '../../design_system/components/ui/cards/app_balance_hero_card.dart';
@@ -50,12 +53,20 @@ class _BalancesData {
     required this.balances,
     required this.debts,
     required this.settlementStatus,
+    this.settlementsError,
   });
 
   final GroupDetail detail;
   final List<BalanceResponse> balances;
   final List<DebtResponse> debts;
   final GroupSettlementStatus settlementStatus;
+
+  /// Error de /settlements y /settlements/status. Esta pantalla ES
+  /// settlements, así que no hay contenido que mostrar igual, pero el grupo
+  /// sí se conserva para que el usuario sepa sobre qué grupo falló.
+  final Object? settlementsError;
+
+  bool get hasSettlements => settlementsError == null;
 }
 
 const List<Color> _avatarPalette = [
@@ -82,18 +93,42 @@ class _BalancesState extends State<Balances> {
     }
   }
 
+  /// El grupo se carga aparte de settlements: si solo falla el bloque de
+  /// balances, la pantalla igual muestra contra qué grupo es en vez de caer
+  /// en un error genérico sin contexto.
   Future<_BalancesData> _load(String groupId) async {
-    final results = await Future.wait([
-      GroupRepository.instance.groupDetail(groupId),
-      GroupRepository.instance.getSettlements(groupId),
-      GroupRepository.instance.getSettlementStatus(groupId),
-    ]);
-    final bundle = results[1] as GroupDebtsBundle;
+    final detail = await GroupRepository.instance.groupDetail(groupId);
+
+    var balances = <BalanceResponse>[];
+    var debts = <DebtResponse>[];
+    var settlementStatus = GroupSettlementStatus(
+      groupId: groupId,
+      isSettled: true,
+      pendingCount: 0,
+      totalPendingAmount: '0',
+      debts: const [],
+    );
+    Object? settlementsError;
+
+    try {
+      final results = await Future.wait([
+        GroupRepository.instance.getSettlements(groupId),
+        GroupRepository.instance.getSettlementStatus(groupId),
+      ]);
+      final bundle = results[0] as GroupDebtsBundle;
+      balances = bundle.balances;
+      debts = bundle.debts;
+      settlementStatus = results[1] as GroupSettlementStatus;
+    } catch (error) {
+      settlementsError = error;
+    }
+
     return _BalancesData(
-      detail: results[0] as GroupDetail,
-      balances: bundle.balances,
-      debts: bundle.debts,
-      settlementStatus: results[2] as GroupSettlementStatus,
+      detail: detail,
+      balances: balances,
+      debts: debts,
+      settlementStatus: settlementStatus,
+      settlementsError: settlementsError,
     );
   }
 
@@ -229,6 +264,55 @@ class _BalancesState extends State<Balances> {
   }
 
   Widget _content(_BalancesData data) {
+    // Degradado: se conserva el grupo y se explica qué falló, en vez de la
+    // pantalla de error genérica que no dice ni sobre qué grupo falló.
+    if (!data.hasSettlements) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.marginMobile,
+          vertical: AppSpacing.md,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              data.detail.groupName,
+              style: AppTypography.headlineLg(
+                color: AppSemanticColors.slate900,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '${data.detail.members.length} member'
+              '${data.detail.members.length == 1 ? '' : 's'}',
+              style: AppTypography.bodySm(
+                color: AppSemanticColors.slate600,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            AppInfoBanner(
+              icon: const Icon(
+                Icons.cloud_off,
+                color: AppSemanticColors.slate400,
+                size: 20,
+              ),
+              title: 'Settlements unavailable',
+              description:
+                  '${apiErrorMessage(data.settlementsError!)} We could not '
+                  'load the balances for this group.',
+              background: AppSemanticColors.slate100,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            AppButton(
+              label: 'Retry',
+              expand: false,
+              onPressed: _retry,
+            ),
+          ],
+        ),
+      );
+    }
+
     final myUserId = AuthSession.instance.userId;
     final status = data.settlementStatus;
     final debts = data.debts;
@@ -428,9 +512,11 @@ class _BalancesState extends State<Balances> {
               amountLabel: _amount(double.parse(d.amount)),
               captionLabel:
                   d.expenses.isNotEmpty ? d.expenses.first.title : '',
-              statusLabel: d.status.toUpperCase() == 'PAID'
-                  ? 'Paid'
-                  : 'Pending confirmation',
+              statusLabel: switch (settlementStatusOf(d.status)) {
+                SettlementStatusKind.settled => 'Paid',
+                SettlementStatusKind.cancelled => 'Cancelled',
+                SettlementStatusKind.pending => 'Pending confirmation',
+              },
             ),
             const SizedBox(height: AppSpacing.sm),
           ],

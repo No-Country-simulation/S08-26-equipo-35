@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/network/api_client.dart';
+import '../../core/utils/settlement_status.dart';
 import '../../core/utils/date_format.dart';
 import '../../design_system/components/ui/avatars/avatar_badge.dart';
 import '../../design_system/components/ui/avatars/avatar_stack.dart';
@@ -20,6 +21,7 @@ import '../../design_system/navigations/app_top_bar.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../core/network/api_error_ui.dart';
 import '../../router/app_router.dart';
 import '../auth/data/auth_session.dart';
 import '../groups/data/group_detail.dart';
@@ -145,12 +147,11 @@ class _MarkPaymentState extends State<MarkPayment> {
     }
   }
 
-  /// El status de SettlementResponse es string libre en la API; se asume
-  /// "settled"/"PAID" = confirmado (cualquier case), resto = pendiente.
-  static bool _isPending(String status) {
-    final s = status.toLowerCase();
-    return s != 'settled' && s != 'paid';
-  }
+  /// El status de SettlementResponse es string libre en la API. Solo un
+  /// pago PENDING se puede confirmar: un PAID ya está saldado y un
+  /// CANCELLED fue rechazado (hay que registrar otro, no confirmarlo).
+  /// Ver `settlementStatusOf`.
+  static bool _isPending(String status) => isPendingStatus(status);
 
   String _nameOf(String userId) {
     final cached = _names[userId];
@@ -219,13 +220,10 @@ class _MarkPaymentState extends State<MarkPayment> {
       Navigator.pop(context, true);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.message)));
-    } catch (_) {
+      showApiError(context, e);
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo conectar con el servidor.')),
-      );
+      showApiError(context, error);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -449,8 +447,12 @@ class _MarkPaymentState extends State<MarkPayment> {
       name: payerName,
       subtitle: 'paid $receiverName',
       amountLabel: '\$${(double.tryParse(p.amount) ?? 0).toStringAsFixed(2)}',
-      captionLabel: formatShortDate(p.settledAt),
-      statusLabel: pending ? 'Pending confirmation' : 'Settled',
+      captionLabel: p.settledAt == null ? '' : formatShortDate(p.settledAt!),
+      statusLabel: switch (settlementStatusOf(p.status)) {
+        SettlementStatusKind.pending => 'Pending confirmation',
+        SettlementStatusKind.settled => 'Settled',
+        SettlementStatusKind.cancelled => 'Cancelled',
+      },
     );
     if (!pending) return row;
     return GestureDetector(

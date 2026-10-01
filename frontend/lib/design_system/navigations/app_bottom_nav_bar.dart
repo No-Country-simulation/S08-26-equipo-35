@@ -12,6 +12,11 @@ class AppBottomNavItem {
 /// Barra de navegación inferior (Groups/Activity/Balances/Profile). Igual
 /// que AppTopBar, vive en navigation/ por ser layout de Scaffold, no un
 /// átomo de components/ui/.
+///
+/// A diferencia de `AppTopBar` no hace falta ser `StatefulWidget` para el
+/// inset: esta barra no es un `PreferredSizeWidget`, así que `Scaffold` la mide
+/// con el `build` directamente y alcanza con sumar el padding de abajo. Se
+/// auto-ajusta: en un teléfono sin barra de gestos el inset es 0.
 class AppBottomNavBar extends StatelessWidget {
   const AppBottomNavBar({
     super.key,
@@ -27,7 +32,10 @@ class AppBottomNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      padding: EdgeInsets.only(
+        top: AppSpacing.xs,
+        bottom: AppSpacing.xs + MediaQuery.paddingOf(context).bottom,
+      ),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: AppSemanticColors.slate200)),

@@ -14,8 +14,15 @@ import '../../core/network/api_error_ui.dart';
 import '../auth/data/auth_repository.dart';
 import '../../router/app_router.dart';
 
-/// SOLO MAQUETA — sin controllers, sin onPressed reales, sin navegación.
-/// Reemplaza los `() {}` y el placeholder de logo cuando conectes lógica.
+/// Onboarding: landing + alta de cuenta, CONECTADO.
+///
+/// Esta clase solía llevar arriba un marker de "solo maqueta" que ya no aplica:
+/// la landing y el `_TrustedCommunityCard` son presentacionales, pero el alta
+/// vive en `_AuthCard` (más abajo en este archivo) y sí está conectada — hace
+/// `register` → `login` → `fetchProfile` y navega a Home.
+///
+/// La única pantalla que sigue siendo maqueta en toda la app es
+/// `history.dart`, que tiene su propio marker.
 class OnboardingScreen extends StatelessWidget {
   const OnboardingScreen({super.key});
 

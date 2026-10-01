@@ -31,6 +31,32 @@ import '../groups/data/group_detail.dart';
 import '../groups/data/group_repository.dart';
 import '../groups/domain/balance_calculator.dart';
 
+/// Botón de volver con fondo translúcido, para que se lea sobre la imagen a
+/// sangre sin depender de que la foto salga clara.
+class _GlassIconButton extends StatelessWidget {
+  const _GlassIconButton({required this.icon, required this.onPressed});
+
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        shape: BoxShape.circle,
+      ),
+      child: IconButton(
+        icon: Icon(icon, color: AppSemanticColors.slate900, size: 20),
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+}
+
 class _GroupDetailsData {
   const _GroupDetailsData({
     required this.detail,
@@ -316,12 +342,28 @@ class _GroupDetailsState extends State<GroupDetails> {
 
   @override
   Widget build(BuildContext context) {
+    // Leído **antes** del Scaffold y con el `context` de este método, que
+    // está por encima de él.
+    //
+    // Adentro del body no sirve ni `MediaQuery.paddingOf(context).top` ni
+    // `viewPaddingOf(context).top`: Scaffold quita el padding superior del
+    // body cuando hay appBar (`removeTopPadding: widget.appBar != null`), y
+    // `MediaQueryData.removePadding` descuenta **también** de `viewPadding`,
+    // así que los dos devuelven 0. El inset hay que leerlo de acá.
+    final topInset = MediaQuery.paddingOf(context).top;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
     return Scaffold(
       backgroundColor: AppMd3Colors.background,
+      // La imagen de portada llega hasta arriba del todo, detrás del reloj y
+      // de la barra. Por eso la barra va transparente y la foto lleva un velo
+      // (ver `AppCoverHeader.scrim`) para que el título y los íconos se lean.
+      extendBodyBehindAppBar: true,
       appBar: AppTopBar(
         title: 'Detalles del grupo',
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppSemanticColors.slate900),
+        backgroundColor: Colors.transparent,
+        leading: _GlassIconButton(
+          icon: Icons.arrow_back,
           onPressed: () => Navigator.pop(context),
         ),
         trailing: const AppAvatar(initials: 'AX', size: 36),
@@ -448,6 +490,18 @@ final detail = _statusOverride == null
                     AppCoverHeader(
                       imageUrl:
                           'https://picsum.photos/seed/${widget.groupId}/800/400',
+                      // La imagen ahora arranca en y=0, detrás de la barra.
+                      // Se le suma el alto de la barra + inset para que el
+                      // área visible de foto sea la misma que antes, en vez de
+                      // comerse los ~80px de arriba.
+                      height: 180 + topInset + AppTopBar.contentHeight,
+                      floatingActionTop: topInset + AppTopBar.contentHeight,
+                      // A sangre contra el borde superior: redondear sólo
+                      // abajo, o queda una franja del color del fondo.
+                      borderRadius: BorderRadius.vertical(
+                        bottom: Radius.circular(AppRadius.md),
+                      ),
+                      scrim: true,
                       floatingAction: CircleAvatar(
                         backgroundColor: Colors.white.withValues(alpha: 0.9),
                         child: IconButton(
@@ -734,13 +788,25 @@ final detail = _statusOverride == null
                           const SizedBox(height: AppSpacing.xs),
                         ],
                     ],
-                    const SizedBox(height: 80),
+                    // Holgura para que la última fila de gastos pueda
+                    // scrollear por detrás del botón "Agregar gasto". Crece
+                    // con el inset porque el botón también subió.
+                    SizedBox(height: 80 + bottomInset),
                   ],
                 ),
               ),
               Positioned(
                 right: AppSpacing.marginMobile,
-                bottom: AppSpacing.md,
+                // Esta pantalla no tiene `bottomNavigationBar`, así que el
+                // body del Scaffold llega hasta el borde inferior de la
+                // pantalla. Sin sumar el inset, el botón queda debajo de la
+                // barra de navegación de Android.
+                //
+                // Ojo: en `home.dart` el mismo botón NO lleva este inset,
+                // porque ahí el body se layoutea por encima de
+                // `AppBottomNavBar` y su `padding.bottom` ya viene en 0 —
+                // sumarlo sería doble padding.
+                bottom: AppSpacing.md + bottomInset,
                 child: AppButton(
                   label: 'Agregar gasto',
                   leadingIcon: const Icon(

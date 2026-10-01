@@ -72,7 +72,7 @@ class SettlementCard extends StatelessWidget {
             Align(
               alignment: Alignment.centerRight,
               child: AppTextAction(
-                label: 'Details',
+                label: 'Ver detalle',
                 emphasized: true,
                 trailingIcon: const Icon(Icons.expand_more, size: 16, color: AppMd3Colors.primaryContainer),
                 onPressed: onDetailsTap,
@@ -86,7 +86,7 @@ class SettlementCard extends StatelessWidget {
                 if (onRemindTap != null)
                   Expanded(
                     child: AppButton(
-                      label: 'Remind',
+                      label: 'Recordar',
                       leadingIcon: const Icon(Icons.notifications_none, color: Colors.white, size: 18),
                       onPressed: onRemindTap,
                     ),
@@ -96,7 +96,7 @@ class SettlementCard extends StatelessWidget {
                 if (onRecordPaymentTap != null)
                   Expanded(
                     child: AppButton(
-                      label: 'Record Payment',
+                      label: 'Registrar pago',
                       variant: AppButtonVariant.secondary,
                       leadingIcon: const Icon(Icons.check, color: AppMd3Colors.primaryContainer, size: 18),
                       onPressed: onRecordPaymentTap,

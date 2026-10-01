@@ -35,13 +35,13 @@ class LoginScreen extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.lg),
               Text(
-                'Welcome back',
+                'Bienvenido de nuevo',
                 textAlign: TextAlign.center,
                 style: AppTypography.headlineLg(color: AppSemanticColors.slate900),
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                'Log in to keep splitting expenses with your crew.',
+                'Inicia sesión para seguir dividiendo gastos con tu grupo.',
                 textAlign: TextAlign.center,
                 style: AppTypography.bodyLg(color: AppSemanticColors.slate600),
               ),
@@ -108,16 +108,16 @@ class _LoginCardState extends State<_LoginCard> {
       child: Column(
         children: [
           AppButton(
-            label: 'Continue with Google',
+            label: 'Continuar con Google',
             variant: AppButtonVariant.outline,
             leadingIcon: const Icon(Icons.g_mobiledata, size: 24), // placeholder del logo de Google
             onPressed: () {},
           ),
           const SizedBox(height: AppSpacing.md),
-          const AppDividerWithLabel(label: 'or with email'),
+          const AppDividerWithLabel(label: 'o con email'),
           const SizedBox(height: AppSpacing.md),
           AppTextField(
-            label: 'Email address',
+            label: 'Email',
             hintText: 'alex@example.com',
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
@@ -125,7 +125,7 @@ class _LoginCardState extends State<_LoginCard> {
           ),
           const SizedBox(height: AppSpacing.md),
           AppTextField(
-            label: 'Password',
+            label: 'Contraseña',
             hintText: '••••••••',
             controller: _passwordController,
             obscureText: true,
@@ -133,7 +133,7 @@ class _LoginCardState extends State<_LoginCard> {
           ),
           const SizedBox(height: AppSpacing.md),
           AppButton(
-            label: 'Log In',
+            label: 'Iniciar sesión',
             isLoading: _isLoading,
             trailingIcon: _isLoading
                 ? null
@@ -147,7 +147,7 @@ class _LoginCardState extends State<_LoginCard> {
               children: [
                 const TextSpan(text: "Don't have an account? "),
                 TextSpan(
-                  text: 'Sign up',
+                  text: 'Crear cuenta',
                   style: AppTypography.bodySm(color: AppMd3Colors.primaryContainer)
                       .copyWith(fontWeight: FontWeight.w600),
                   recognizer: TapGestureRecognizer()

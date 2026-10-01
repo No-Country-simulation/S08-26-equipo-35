@@ -7,6 +7,7 @@ import '../../design_system/components/ui/avatars/avatar_stack.dart';
 import '../../design_system/components/ui/banners/app_notice_box.dart';
 import '../../design_system/components/ui/buttons/app_button.dart';
 import '../../design_system/components/ui/buttons/app_circle_icon_button.dart';
+import '../../design_system/components/ui/buttons/app_text_action.dart';
 import '../../design_system/components/ui/cards/editable_amount_display.dart';
 import '../../design_system/components/ui/cards/transfer_parties_card.dart';
 import '../../design_system/components/ui/chips/app_filter_chip.dart';
@@ -34,8 +35,9 @@ import '../groups/data/group_repository.dart';
 ///    pago existente → `PATCH /payments/{id}/pay`.
 ///  - **Registrar**: `receiverUserId` != null → registrar un pago propio →
 ///    `POST /groups/{id}/payments`.
-///  - **Lista**: solo `groupId` → `GET /groups/{id}/payments`; los pagos
-///    pendientes se tocan para pasar al modo confirmar.
+///  - **Lista**: solo `groupId` → `GET /groups/{id}/payments` (con filtro de
+///    `status` elegido en la UI); los pagos pendientes se tocan para pasar al
+///    modo confirmar.
 class MarkPaymentArgs {
   const MarkPaymentArgs({
     required this.groupId,
@@ -67,12 +69,15 @@ class MarkPaymentArgs {
 }
 
 /// Mark Payment conectado a la API de pagos del grupo:
-/// GET /groups/{id}/payments, POST /groups/{id}/payments y
-/// PATCH /payments/{id}/pay.
+/// GET /groups/{id}/payments (con filtros de status/payer/receiver/limit/offset),
+/// GET /groups/{id}/payments/{sid}, POST /groups/{id}/payments,
+/// PATCH /payments/{id}/pay y PATCH /payments/{id}/cancel.
 ///
-/// Métodos de pago, fecha y nota quedan visuales igual que en la maqueta —
-/// el backend todavía no los guarda. Tras confirmar o registrar vuelve con
-/// `true` para que Balances recargue.
+/// Al abrir el modo confirmar el pago se refresca contra la API: si otro
+/// usuario ya lo confirmó o rechazó, no se deja mandar un cambio que el
+/// backend va a rechazar. Métodos de pago, fecha y nota quedan visuales
+/// igual que en la maqueta — el backend todavía no los guarda. Tras
+/// confirmar, registrar o rechazar vuelve con `true` para que Balances recargue.
 class MarkPayment extends StatefulWidget {
   const MarkPayment({super.key, this.args});
 
@@ -103,6 +108,20 @@ class _MarkPaymentState extends State<MarkPayment> {
   int _statusIndex = 1;
   bool _submitting = false;
 
+  /// Filtro de la lista de pagos: 0 = todos (sin `status` en la query),
+  /// 1 = PENDING, 2 = PAID, 3 = CANCELLED. Filtra el servidor, no el cliente.
+  int _filterIndex = 0;
+
+  /// El pago abierto en modo confirmar, refrescado contra la API. Si deja de
+  /// estar PENDING (otro lo confirmó o rechazó) el botón se deshabilita en
+  /// vez de mandar un cambio que el backend va a rechazar.
+  SettlementResponse? _freshSettlement;
+  bool _refreshingSettlement = false;
+
+  /// 404: el pago ya no existe. Distinto de "todavía no lo consulté", que
+  /// deja `_freshSettlement` en null pero permite actuar.
+  bool _settlementMissing = false;
+
   @override
   void initState() {
     super.initState();
@@ -120,11 +139,66 @@ class _MarkPaymentState extends State<MarkPayment> {
     } else {
       _paymentsFuture = _loadPayments(args.groupId);
     }
+    if (args.isConfirm) {
+      _refreshSettlement(args);
+    }
   }
+
+  /// Filtro activo → valor de `status` para la query (null = todos).
+  static const List<String?> _statusFilters = [null, 'PENDING', 'PAID', 'CANCELLED'];
+
+  /// Trae el pago fresco antes de mostrar la pantalla de confirmar. La lista
+  /// puede tener una copia vieja: si otro usuario ya lo confirmó o rechazó,
+  /// mandar el cambio sería un error, así quepreferimos avisar.
+  Future<void> _refreshSettlement(MarkPaymentArgs args) async {
+    final settlement = args.settlement;
+    if (settlement == null) return;
+    setState(() => _refreshingSettlement = true);
+    try {
+      final fresh = await GroupRepository.instance.getPayment(
+        args.groupId,
+        settlement.settlementId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _freshSettlement = fresh;
+        _refreshingSettlement = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        // 404 = el pago ya no existe, no se puede actuar sobre él. Otro
+        // error = no sabemos su estado real, así que dejamos la copia de
+        // la lista y dejamos pasar.
+        if (e.statusCode == 404) _settlementMissing = true;
+        _refreshingSettlement = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _refreshingSettlement = false);
+    }
+  }
+
+  /// El pago con el que se está trabajando: el refrescado si está, si no el
+  /// de la lista.
+  SettlementResponse? get _currentSettlement =>
+      _freshSettlement ?? widget.args?.settlement;
+
+  /// Solo se puede confirmar/rechazar un pago que sigue PENDING y existe.
+  bool get _canAct =>
+      !_refreshingSettlement &&
+      !_settlementMissing &&
+      isPendingStatus(_currentSettlement?.status ?? 'PENDING');
 
   Future<List<SettlementResponse>> _loadPayments(String groupId) async {
     await _loadNames(groupId);
-    return GroupRepository.instance.listPayments(groupId);
+    // limit 100 = el máximo del schema. El default del backend es 50, que
+    // truncaría en silencio; más de 100 pagos pediría paginar con `offset`.
+    return GroupRepository.instance.listPayments(
+      groupId,
+      status: _statusFilters[_filterIndex],
+      limit: 100,
+    );
   }
 
   /// Nombres id → nombre desde GET /groups/{id}/balances (la API no tiene
@@ -156,7 +230,7 @@ class _MarkPaymentState extends State<MarkPayment> {
   String _nameOf(String userId) {
     final cached = _names[userId];
     if (cached == null) return '…';
-    if (cached.isEmpty) return 'Member';
+    if (cached.isEmpty) return 'Miembro';
     return cached;
   }
 
@@ -181,8 +255,35 @@ class _MarkPaymentState extends State<MarkPayment> {
   }
 
   /// Abre el modo confirmar para un pago pendiente y recarga la lista si
-  /// la confirmación tuvo éxito.
+  /// la confirmación/rechazo tuvo éxito.
   Future<void> _openConfirm(MarkPaymentArgs from, SettlementResponse p) async {
+    // Refresco antes de abrir: la fila puede estar vieja (otro usuario ya
+    // confirmó o rechazó). No abrimos si el pago ya no está pendiente.
+    try {
+      final fresh = await GroupRepository.instance.getPayment(
+        from.groupId,
+        p.settlementId,
+      );
+      if (!mounted) return;
+      if (!isPendingStatus(fresh.status)) {
+        _notifyStale(fresh);
+        _retryList();
+        return;
+      }
+      p = fresh;
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 404) {
+        _notifyStale(null);
+        _retryList();
+        return;
+      }
+      // Otro error (red/500): seguimos con la fila de la lista.
+    } catch (_) {
+      // Sin conexión: seguimos con la fila de la lista.
+    }
+
+    if (!mounted) return;
     final result = await Navigator.pushNamed<bool>(
       context,
       AppRoutes.markPayment,
@@ -194,6 +295,19 @@ class _MarkPaymentState extends State<MarkPayment> {
       ),
     );
     if (result == true && mounted) _retryList();
+  }
+
+  void _notifyStale(SettlementResponse? settlement) {
+    final label = switch (settlement == null
+        ? SettlementStatusKind.cancelled
+        : settlementStatusOf(settlement.status)) {
+      SettlementStatusKind.settled => 'ya estaba pagado',
+      SettlementStatusKind.cancelled => 'fue rechazado',
+      SettlementStatusKind.pending => 'ya no está disponible',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Este pago $label.')),
+    );
   }
 
   Future<void> _submit(MarkPaymentArgs args) async {
@@ -213,9 +327,59 @@ class _MarkPaymentState extends State<MarkPayment> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            args.isConfirm ? 'Payment confirmed.' : 'Payment recorded.',
+            args.isConfirm ? 'Pago confirmado.' : 'Pago registrado.',
           ),
         ),
+      );
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      showApiError(context, e);
+    } catch (error) {
+      if (!mounted) return;
+      showApiError(context, error);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  /// Rechaza un pago pendiente (PATCH /payments/{id}/cancel). Pide
+  /// confirmación porque deshace un pago ya registrado: la deuda vuelve a
+  /// existir para el pagador.
+  Future<void> _reject(MarkPaymentArgs args) async {
+    final settlement = _currentSettlement ?? args.settlement;
+    if (settlement == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Rechazar este pago?'),
+        content: Text(
+          'El pago de \$${(double.tryParse(settlement.amount) ?? 0).toStringAsFixed(2)} '
+          'será rechazado y el balance volverá a quedar pendiente.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Rechazar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _submitting = true);
+    try {
+      await GroupRepository.instance.cancelSettlement(
+        settlement.settlementId,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pago rechazado.')),
       );
       Navigator.pop(context, true);
     } on ApiException catch (e) {
@@ -237,7 +401,7 @@ class _MarkPaymentState extends State<MarkPayment> {
     final value = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Custom amount'),
+        title: const Text('Monto personalizado'),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -247,7 +411,7 @@ class _MarkPaymentState extends State<MarkPayment> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: const Text('Cancelar'),
           ),
           TextButton(
             onPressed: () {
@@ -270,7 +434,7 @@ class _MarkPaymentState extends State<MarkPayment> {
     if (value == null) {
       if (invalid && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enter a valid amount.')),
+          const SnackBar(content: Text('Escribe un monto válido.')),
         );
       }
       return;
@@ -288,7 +452,7 @@ class _MarkPaymentState extends State<MarkPayment> {
     return Scaffold(
       backgroundColor: AppMd3Colors.background,
       appBar: AppTopBar(
-        title: 'Mark Payment',
+        title: 'Registrar pago',
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppSemanticColors.slate900),
           onPressed: () => Navigator.pop(context),
@@ -313,12 +477,12 @@ class _MarkPaymentState extends State<MarkPayment> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Payment details not found.',
+              'No se encontraron los datos del pago.',
               style: AppTypography.bodyMd(color: AppSemanticColors.slate600),
             ),
             const SizedBox(height: AppSpacing.md),
             AppButton(
-              label: 'Go back',
+              label: 'Volver',
               expand: false,
               onPressed: () => Navigator.pop(context),
             ),
@@ -361,9 +525,11 @@ class _MarkPaymentState extends State<MarkPayment> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const AppEyebrowHeading(
-                eyebrow: 'Settlement',
-                title: 'Pending Payments',
+                eyebrow: 'Saldos',
+                title: 'Pagos',
               ),
+              const SizedBox(height: AppSpacing.md),
+              _filterRow(args),
               const SizedBox(height: AppSpacing.md),
               body,
             ],
@@ -373,18 +539,43 @@ class _MarkPaymentState extends State<MarkPayment> {
     );
   }
 
+  /// Filtros All / Pending / Paid / Cancelled. El estado se manda al server
+  /// (GET /payments?status=...) en vez de filtrar la lista en cliente.
+  Widget _filterRow(MarkPaymentArgs args) {
+    const labels = ['Todos', 'Pendientes', 'Pagados', 'Cancelados'];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++) ...[
+            AppFilterChip(
+              label: labels[i],
+              selected: _filterIndex == i,
+              onTap: () {
+                if (_filterIndex == i) return;
+                setState(() => _filterIndex = i);
+                _retryList();
+              },
+            ),
+            const SizedBox(width: AppSpacing.xs),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _listError() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
       child: Column(
         children: [
           Text(
-            'Could not load payments.',
+            'No pudimos cargar los pagos.',
             style: AppTypography.bodyMd(color: AppSemanticColors.slate600),
           ),
           const SizedBox(height: AppSpacing.md),
           AppButton(
-            label: 'Retry',
+            label: 'Reintentar',
             expand: false,
             onPressed: _retryList,
           ),
@@ -396,10 +587,10 @@ class _MarkPaymentState extends State<MarkPayment> {
   Widget _listEmpty(MarkPaymentArgs args) {
     final name = args.receiverName;
     final text = name != null
-        ? 'No pending payment from $name yet — it will appear here for '
-            'confirmation once it is recorded.'
-        : 'No pending payments in this group yet. Payments recorded from '
-            'a debt card in Balances will appear here.';
+        ? 'Todavía no hay pagos pendientes de $name — aparecerán aquí para '
+            'confirmarlos una vez registrados.'
+        : 'Este grupo todavía no tiene pagos pendientes. Los pagos que se '
+            'registren desde una tarjeta de deuda en Saldos aparecerán aquí.';
     return AppNoticeBox(
       icon: const Icon(
         Icons.info_outline,
@@ -445,13 +636,13 @@ class _MarkPaymentState extends State<MarkPayment> {
         backgroundColor: AppMd3Colors.primaryContainer,
       ),
       name: payerName,
-      subtitle: 'paid $receiverName',
+      subtitle: 'le pagó $receiverName',
       amountLabel: '\$${(double.tryParse(p.amount) ?? 0).toStringAsFixed(2)}',
       captionLabel: p.settledAt == null ? '' : formatShortDate(p.settledAt!),
       statusLabel: switch (settlementStatusOf(p.status)) {
-        SettlementStatusKind.pending => 'Pending confirmation',
-        SettlementStatusKind.settled => 'Settled',
-        SettlementStatusKind.cancelled => 'Cancelled',
+        SettlementStatusKind.pending => 'Pendiente de confirmación',
+        SettlementStatusKind.settled => 'Saldado',
+        SettlementStatusKind.cancelled => 'Cancelado',
       },
     );
     if (!pending) return row;
@@ -477,7 +668,7 @@ class _MarkPaymentState extends State<MarkPayment> {
         : args.receiverUserId!;
     final payerName = isConfirm
         ? (args.payerName ?? _nameOf(payerId))
-        : (AuthSession.instance.userName ?? 'You');
+        : (AuthSession.instance.userName ?? 'Vos');
     final receiverName = args.receiverName ?? _nameOf(receiverId);
 
     final remaining = _owedAmount - _amount;
@@ -496,8 +687,8 @@ class _MarkPaymentState extends State<MarkPayment> {
             children: [
               const Expanded(
                 child: AppEyebrowHeading(
-                  eyebrow: 'Settlement',
-                  title: 'Settle Balance',
+                  eyebrow: 'Saldos',
+                  title: 'Saldar el balance',
                 ),
               ),
               AppCircleIconButton(
@@ -520,7 +711,7 @@ class _MarkPaymentState extends State<MarkPayment> {
               badgeColor: AppMd3Colors.primaryContainer,
             ),
             fromName: payerName,
-            fromRole: 'Payer',
+            fromRole: 'Pagador',
             toAvatar: AvatarBadge(
               avatar: AppAvatar(
                 initials: _initial(receiverName, receiverId),
@@ -532,8 +723,8 @@ class _MarkPaymentState extends State<MarkPayment> {
               badgeColor: AppSemanticColors.positive,
             ),
             toName: receiverName,
-            toRole: 'Recipient',
-            connectorLabel: 'Direct',
+            toRole: 'Receptor',
+            connectorLabel: 'Directo',
           ),
           const SizedBox(height: AppSpacing.sm),
 
@@ -551,14 +742,14 @@ class _MarkPaymentState extends State<MarkPayment> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'SETTLEMENT AMOUNT',
+                      'MONTO DEL SALDO',
                       style: AppTypography.labelMd(
                         color: AppSemanticColors.slate600,
                       ),
                     ),
                     AppTag(
                       label:
-                          '${isConfirm ? 'Pending' : 'Owed'}: \$${_owedAmount.toStringAsFixed(2)}',
+                          '${isConfirm ? 'Pendiente' : 'Debido'}: \$${_owedAmount.toStringAsFixed(2)}',
                       background: AppSemanticColors.positiveContainer,
                       foreground: AppSemanticColors.positiveText,
                       uppercase: false,
@@ -569,7 +760,7 @@ class _MarkPaymentState extends State<MarkPayment> {
                 EditableAmountDisplay(
                   amount: _amount.toStringAsFixed(2),
                   editHint:
-                      isConfirm ? null : 'Tap to edit custom sum',
+                      isConfirm ? null : 'Tocá para editar el monto',
                   onTap: isConfirm ? null : _editCustomAmount,
                 ),
                 if (!isConfirm) ...[
@@ -579,7 +770,7 @@ class _MarkPaymentState extends State<MarkPayment> {
                       Expanded(
                         child: AppFilterChip(
                           label:
-                              'Full (\$${_owedAmount.toStringAsFixed(2)})',
+                              'Total (\$${_owedAmount.toStringAsFixed(2)})',
                           selected: _amountChip == 0,
                           onTap: () => setState(() {
                             _amountChip = 0;
@@ -591,7 +782,7 @@ class _MarkPaymentState extends State<MarkPayment> {
                       Expanded(
                         child: AppFilterChip(
                           label:
-                              'Half (\$${(_owedAmount / 2).toStringAsFixed(2)})',
+                              'Mitad (\$${(_owedAmount / 2).toStringAsFixed(2)})',
                           selected: _amountChip == 1,
                           onTap: () => setState(() {
                             _amountChip = 1;
@@ -604,7 +795,7 @@ class _MarkPaymentState extends State<MarkPayment> {
                       const SizedBox(width: AppSpacing.xs),
                       Expanded(
                         child: AppFilterChip(
-                          label: 'Custom',
+                          label: 'Otro',
                           selected: _amountChip == 2,
                           onTap: _editCustomAmount,
                         ),
@@ -618,7 +809,7 @@ class _MarkPaymentState extends State<MarkPayment> {
           const SizedBox(height: AppSpacing.lg),
 
           Text(
-            'PAYMENT METHOD',
+            'MÉTODO DE PAGO',
             style: AppTypography.labelMd(color: AppSemanticColors.slate600),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -648,9 +839,9 @@ class _MarkPaymentState extends State<MarkPayment> {
               size: 18,
               color: AppSemanticColors.slate600,
             ),
-            label: 'Payment Date',
+            label: 'Fecha del pago',
             trailing: AppTag(
-              label: 'Today, ${formatShortDate(DateTime.now())}',
+              label: 'Hoy, ${formatShortDate(DateTime.now())}',
               background: AppMd3Colors.surfaceContainer,
               foreground: AppMd3Colors.primaryContainer,
               uppercase: false,
@@ -658,18 +849,18 @@ class _MarkPaymentState extends State<MarkPayment> {
           ),
           const SizedBox(height: AppSpacing.sm),
           const AppTextField(
-            hintText: 'Optional note (e.g. Sent via Bizum)',
+            hintText: 'Nota opcional (ej. Enviado por Bizum)',
             prefixIcon: Icon(Icons.notes, color: AppSemanticColors.slate400),
           ),
           const SizedBox(height: AppSpacing.lg),
 
           Text(
-            'CONFIRMATION STATUS',
+            'ESTADO DE CONFIRMACIÓN',
             style: AppTypography.labelMd(color: AppSemanticColors.slate600),
           ),
           const SizedBox(height: AppSpacing.sm),
           AppSegmentedToggle(
-            options: const ['Pending Confirmation', 'Paid & Confirmed'],
+            options: const ['Pendiente de confirmación', 'Pagado y confirmado'],
             selectedIndex: _statusIndex,
             onChanged: (i) => setState(() => _statusIndex = i),
           ),
@@ -687,7 +878,7 @@ class _MarkPaymentState extends State<MarkPayment> {
                   TextSpan(
                     text: isConfirm
                         ? "Confirming this payment will settle $payerName's balance with you from "
-                        : 'Recording this payment will reduce what you owe $receiverName from ',
+                        : 'Registrar este pago reduce lo que le debés a $receiverName de ',
                   ),
                   TextSpan(
                     text: '\$${_owedAmount.toStringAsFixed(2)}',
@@ -712,16 +903,53 @@ class _MarkPaymentState extends State<MarkPayment> {
 
           AppButton(
             label: isConfirm
-                ? 'Confirm & Mark as Paid (\$${_amount.toStringAsFixed(2)})'
-                : 'Record Payment (\$${_amount.toStringAsFixed(2)})',
+                ? 'Confirmar y marcar como pagado (\$${_amount.toStringAsFixed(2)})'
+                : 'Registrar pago (\$${_amount.toStringAsFixed(2)})',
             leadingIcon: const Icon(
               Icons.check_circle,
               color: Colors.white,
               size: 18,
             ),
             isLoading: _submitting,
-            onPressed: _submitting ? null : () => _submit(args),
+            onPressed: _submitting || (isConfirm && !_canAct)
+                ? null
+                : () => _submit(args),
           ),
+          // Rechazar es la contra-operación de confirmar: deja el pago
+          // CANCELLED y la deuda vuelve a existir. Solo tiene sentido si el
+          // pago sigue pendiente.
+          if (isConfirm) ...[
+            const SizedBox(height: AppSpacing.xs),
+            if (!_canAct)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                child: AppNoticeBox(
+                  icon: const Icon(
+                    Icons.info_outline,
+                    size: 18,
+                    color: AppSemanticColors.slate600,
+                  ),
+                  content: Text(
+                    _settlementMissing
+                        ? 'Este pago ya no existe.'
+                        : 'Este pago ya no está pendiente, así que no se puede '
+                              'confirmado o rechazado.',
+                    style: AppTypography.bodySm(
+                      color: AppSemanticColors.slate600,
+                    ),
+                  ),
+                ),
+              ),
+            Center(
+              child: AppTextAction(
+                label: 'Rechazar este pago',
+                destructive: true,
+                onPressed: _submitting || !_canAct
+                    ? null
+                    : () => _reject(args),
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.xl),
         ],
       ),

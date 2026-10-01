@@ -72,7 +72,7 @@ class PeerSettlementRow extends StatelessWidget {
             children: [
               const Icon(Icons.info_outline, size: 14, color: AppSemanticColors.slate400),
               const SizedBox(width: 4),
-              Text('Between other members', style: AppTypography.bodySm(color: AppSemanticColors.slate400)),
+              Text('Entre otros miembros', style: AppTypography.bodySm(color: AppSemanticColors.slate400)),
               const Spacer(),
               Text(statusLabel, style: AppTypography.labelSm(color: AppSemanticColors.positiveText)),
             ],

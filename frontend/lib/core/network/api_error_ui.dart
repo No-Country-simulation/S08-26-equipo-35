@@ -21,7 +21,7 @@ String apiErrorMessage(Object error) {
     if (error.statusCode == 0) return 'No se pudo conectar con el servidor.';
     if (error.statusCode >= 500) {
       return 'El servidor tuvo un error (${error.statusCode}). '
-          'Probá de nuevo en un momento.';
+          'Prueba de nuevo en un momento.';
     }
     return error.message;
   }

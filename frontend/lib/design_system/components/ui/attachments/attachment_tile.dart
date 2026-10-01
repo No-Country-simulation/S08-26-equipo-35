@@ -11,7 +11,7 @@ class AttachmentTile extends StatelessWidget {
     super.key,
     this.imageUrl,
     this.caption,
-    this.addTitle = 'Add Photo',
+    this.addTitle = 'Agregar foto',
     this.addSubtitle,
     required this.onTap,
   });

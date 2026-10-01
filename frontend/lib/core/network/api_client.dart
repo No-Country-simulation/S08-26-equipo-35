@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import '../../features/auth/data/auth_session.dart';
+import '../utils/query_params.dart';
 
 /// Error genérico para respuestas no-2xx o problemas de red.
 class ApiException implements Exception {
@@ -57,10 +58,22 @@ class ApiClient {
   /// GET genérico. Devuelve `dynamic` porque algunos endpoints responden
   /// un objeto (`/me`) y otros un array (`/list`) — castea del lado del
   /// caller según lo que esperes.
-  static Future<dynamic> get(String path, {bool authenticated = false}) async {
+  ///
+  /// `query` se filtra y URL-encodea por `withQueryParams`; los valores
+  /// `null` se omiten, así que un filtro sin aplicar no viaja en la URL.
+  static Future<dynamic> get(
+    String path, {
+    bool authenticated = false,
+    Map<String, String?>? query,
+  }) async {
     late final http.Response response;
     try {
-      response = await http.get(_uri(path), headers: _headers(authenticated: authenticated)).timeout(_timeout);
+      response = await http
+          .get(
+            withQueryParams(_uri(path), query),
+            headers: _headers(authenticated: authenticated),
+          )
+          .timeout(_timeout);
     } catch (_) {
       throw ApiException(0, 'No se pudo conectar con el servidor.');
     }

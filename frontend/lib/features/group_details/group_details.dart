@@ -8,6 +8,7 @@ import '../../design_system/components/ui/chips/app_filter_chip.dart';
 import '../../design_system/components/ui/chips/member_chip.dart';
 import '../../design_system/components/ui/headers/app_cover_header.dart';
 import '../../design_system/components/ui/row/meta_row.dart';
+import '../../design_system/components/ui/row/app_settings_row.dart';
 import '../../design_system/components/ui/buttons/app_text_action.dart';
 import '../../design_system/components/ui/titles/app_quick_action_tile.dart';
 import '../../design_system/components/ui/titles/app_editable_title.dart';
@@ -63,11 +64,18 @@ class _GroupDetailsData {
 
 /// Group Details conectado a GET /groups/detail/{id}, GET /groups/{id}/expenses,
 /// GET /groups/{id}/settlements (nombres + deudas), PATCH /groups/{id}
-/// (renombrar) y DELETE /groups/{id} (borrar).
+/// (renombrar, marcar como saldado/reabrir) y DELETE /groups/{id} (borrar).
+/// Además gestiona miembros con POST /groups/{id}/members (alta por email o
+/// user_id) y DELETE /groups/{id}/members/{user_id} (baja).
 ///
-/// Sin conectar, por falta de endpoint: código/link de invitación
-/// ("Crew & Friends" no tiene el chip de código), "Share Link" y
-/// "Summary" (quick actions sin acción real).
+/// Tras cualquier alta o baja se llama a `_retry()`, que recarga las 4
+/// llamadas de la pantalla. Eso no es sólo por el `detail`: `GroupMember`
+/// no tiene nombre, y el nombre de cada miembro sale de `/balances`, así que
+/// sin el refetch el invitado nuevo aparecería como "Member a3f1c2...".
+///
+/// Sin conectar, por falta de endpoint: el código/link de invitación para
+/// compartir (la API no expone un código de grupo, sólo alta por
+/// email/user_id) y el quick action "Summary".
 class GroupDetails extends StatefulWidget {
   const GroupDetails({super.key, required this.groupId});
 
@@ -79,7 +87,7 @@ class GroupDetails extends StatefulWidget {
 
 class _GroupDetailsState extends State<GroupDetails> {
   late Future<_GroupDetailsData> _future;
-  String _categoryFilter = 'All';
+  String _categoryFilter = 'Todos';
 
   @override
   void initState() {
@@ -147,7 +155,46 @@ class _GroupDetailsState extends State<GroupDetails> {
     );
   }
 
-  void _retry() => setState(() => _future = _load());
+  /// Al recargar, el override se descarta: el `groupDetail` fresco trae el
+  /// status real del servidor y tiene prioridad sobre el valor local.
+  void _retry() => setState(() {
+        _statusOverride = null;
+        _future = _load();
+      });
+
+  /// Override local del `status` del grupo.
+  ///
+  /// `PATCH /groups/{id}` no devuelve el grupo actualizado (su schema es
+  /// `{group_name, status}` echoes, sin el resto), así que después de
+  /// marcar como saldado no hay forma barata de tener el `GroupDetail`
+  /// fresco sin recargar la pantalla entera — y recargar eso son 4
+  /// pedidos (detail + expenses + settlements + status). Se guarda el
+  /// valor nuevo acá y se usa en vez del del servidor hasta el próximo
+  /// `_retry()`. null = usar el que vino en la respuesta.
+  GroupStatus? _statusOverride;
+
+  /// Persiste el nuevo status y lo refleja al toque, sin refetch.
+  Future<void> _changeStatus(
+    GroupDetail detail,
+    GroupStatus status,
+  ) async {
+    if (status == detail.status) return;
+
+    final previous = _statusOverride;
+    setState(() => _statusOverride = status);
+    try {
+      await GroupRepository.instance.updateGroup(
+        detail.groupId,
+        status: status,
+      );
+    } catch (error) {
+      // Se revierte al valor anterior: la UI no puede quedar mostrando un
+      // estado que el backend rechazó.
+      if (!mounted) return;
+      setState(() => _statusOverride = previous);
+      showApiError(context, error);
+    }
+  }
 
   Future<void> _showRenameDialog(GroupDetail detail) async {
     final saved = await showDialog<bool>(
@@ -158,6 +205,26 @@ class _GroupDetailsState extends State<GroupDetails> {
     if (saved == true && mounted) {
       _retry();
     }
+  }
+
+  /// Abre el bottom sheet de ajustes del grupo (estado settled/active).
+  /// Se llama desde el engranaje del `AppCoverHeader`.
+  void _showGroupSettings(BuildContext context, GroupDetail detail) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: _GroupSettingsSheet(
+          detail: detail,
+          effectiveStatus: _statusOverride ?? detail.status,
+          onStatusChanged: (status) async {
+            final navigator = Navigator.of(sheetContext);
+            await _changeStatus(detail, status);
+            if (navigator.mounted) navigator.pop();
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _showDeleteDialog(GroupDetail detail) async {
@@ -171,6 +238,44 @@ class _GroupDetailsState extends State<GroupDetails> {
     }
   }
 
+  /// Alta de miembro por email o user_id.
+  ///
+  /// Es la acción de dos entradas distintas: el quick action "Add member" y
+  /// el botón `+` al final de la fila "Crew & Friends". Termina en `_retry()`
+  /// porque el invitado entra al grupo recién en el `detail` del servidor, y
+  /// además su nombre no existe hasta que `/balances` lo devuelva.
+  Future<void> _showAddMemberDialog(GroupDetail detail) async {
+    final added = await showDialog<bool>(
+      context: context,
+      builder: (context) => _AddMemberDialog(groupId: detail.groupId),
+    );
+
+    if (added == true && mounted) {
+      _retry();
+    }
+  }
+
+  /// Abre la hoja de miembros, desde donde se puede dar de baja a alguien.
+  ///
+  /// A diferencia del alta, acá no hace falta un `_retry()` explícito: cada
+  /// baja devuelve `true` por el `Navigator.pop` y quien abrió la hoja la
+  /// refresca una vez al cerrarse (ver `_MembersSheet.onMemberRemoved`).
+  void _showMembersSheet(GroupDetail detail, Map<String, UserProfile> userProfiles) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => _MembersSheet(
+        groupId: detail.groupId,
+        members: detail.members,
+        userProfiles: userProfiles,
+        isSelf: (userId) => userId == AuthSession.instance.userId,
+        onMemberRemoved: () {
+          if (mounted) _retry();
+        },
+      ),
+    );
+  }
+
   String _displayName(String userId, [Map<String, UserProfile>? userProfiles]) {
     // Buscar en cache de perfiles de usuario si fue proporcionado
     if (userProfiles != null) {
@@ -181,10 +286,10 @@ class _GroupDetailsState extends State<GroupDetails> {
     }
     // Fallback: si es el usuario actual
     if (userId == AuthSession.instance.userId) {
-      return AuthSession.instance.userName ?? 'You';
+      return AuthSession.instance.userName ?? 'Vos';
     }
     // Fallback final: placeholder con UUID
-    return 'Member ${userId.substring(0, userId.length >= 8 ? 8 : userId.length)}';
+    return 'Miembro ${userId.substring(0, userId.length >= 8 ? 8 : userId.length)}';
   }
 
   String _initials(String userId, [Map<String, UserProfile>? userProfiles]) {
@@ -214,7 +319,7 @@ class _GroupDetailsState extends State<GroupDetails> {
     return Scaffold(
       backgroundColor: AppMd3Colors.background,
       appBar: AppTopBar(
-        title: 'Group Details',
+        title: 'Detalles del grupo',
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppSemanticColors.slate900),
           onPressed: () => Navigator.pop(context),
@@ -249,8 +354,18 @@ class _GroupDetailsState extends State<GroupDetails> {
             );
           }
 
-          final data = snapshot.data!;
-          final detail = data.detail;
+final data = snapshot.data!;
+// El status puede tener un override local si el usuario recién lo cambió
+// (ver `_changeStatus`): la API no devuelve el grupo actualizado.
+final detail = _statusOverride == null
+    ? data.detail
+    : GroupDetail(
+        groupId: data.detail.groupId,
+        groupName: data.detail.groupName,
+        status: _statusOverride!,
+        createdAt: data.detail.createdAt,
+        members: data.detail.members,
+      );
           final expenses = data.expenses;
           final myUserId = AuthSession.instance.userId;
           final memberCount = detail.members.length;
@@ -284,7 +399,7 @@ class _GroupDetailsState extends State<GroupDetails> {
                 0,
                 (sum, d) => sum + double.parse(d.amount),
               );
-              apiBalanceLabel = 'You owe';
+              apiBalanceLabel = 'Debes';
               apiBalanceAmount = '\$${totalOwedByMe.toStringAsFixed(2)}';
               apiBalanceBackground = AppSemanticColors.negativeContainer;
               apiBalanceTextColor = AppSemanticColors.negativeText;
@@ -293,26 +408,26 @@ class _GroupDetailsState extends State<GroupDetails> {
                 0,
                 (sum, d) => sum + double.parse(d.amount),
               );
-              apiBalanceLabel = 'You are owed';
+              apiBalanceLabel = 'Te deben';
               apiBalanceAmount = '\$${totalOwedToMe.toStringAsFixed(2)}';
               apiBalanceBackground = AppSemanticColors.positiveContainer;
               apiBalanceTextColor = AppSemanticColors.positiveText;
             } else {
-              apiBalanceLabel = "You're all settled up";
+              apiBalanceLabel = 'Todo saldado';
               apiBalanceBackground = AppSemanticColors.positiveContainer;
               apiBalanceTextColor = AppSemanticColors.positiveText;
             }
           } else {
-            apiBalanceLabel = "You're all settled up";
+            apiBalanceLabel = 'Todo saldado';
             apiBalanceBackground = AppSemanticColors.positiveContainer;
             apiBalanceTextColor = AppSemanticColors.positiveText;
           }
 
           final categories = <String>{
-            'All',
+            'Todos',
             ...expenses.map((e) => e.expenseCategory),
           }.toList();
-          final filtered = _categoryFilter == 'All'
+          final filtered = _categoryFilter == 'Todos'
               ? expenses
               : expenses
                   .where((e) => e.expenseCategory == _categoryFilter)
@@ -341,8 +456,7 @@ class _GroupDetailsState extends State<GroupDetails> {
                             color: AppSemanticColors.slate900,
                             size: 20,
                           ),
-                          onPressed:
-                              () {}, // Sin conectar: no hay pantalla de settings de grupo todavía.
+                          onPressed: () => _showGroupSettings(context, detail),
                         ),
                       ),
                     ),
@@ -353,7 +467,7 @@ class _GroupDetailsState extends State<GroupDetails> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Created ${formatShortDate(detail.createdAt)} · $memberCount member${memberCount == 1 ? '' : 's'}',
+                      'Creado el ${formatShortDate(detail.createdAt)} · $memberCount miembro${memberCount == 1 ? '' : 's'}',
                       style: AppTypography.bodySm(
                         color: AppSemanticColors.slate600,
                       ),
@@ -361,7 +475,7 @@ class _GroupDetailsState extends State<GroupDetails> {
                     const SizedBox(height: AppSpacing.md),
 
                     AppStatCard(
-                      label: 'Total group spending',
+                      label: 'Gasto total del grupo',
                       value: '\$${totalSpending.toStringAsFixed(2)}',
                       icon: const Icon(
                         Icons.receipt_long,
@@ -391,8 +505,8 @@ class _GroupDetailsState extends State<GroupDetails> {
                             Icons.help_outline,
                             color: AppSemanticColors.slate400,
                           ),
-                          title: 'Balance unavailable',
-                          description: 'No active session user to show balance.',
+                          title: 'Balance no disponible',
+                          description: 'No hay sesión activa para mostrar el balance.',
                           background: AppSemanticColors.slate100,
                         )
                       else if (apiBalanceAmount != null)
@@ -409,7 +523,7 @@ class _GroupDetailsState extends State<GroupDetails> {
                             color: AppSemanticColors.positiveText,
                           ),
                           title: apiBalanceLabel,
-                          description: 'No pending settlements in this group.',
+                          description: 'No hay saldos pendientes en este grupo.',
                           background: apiBalanceBackground,
                         ),
                       const SizedBox(height: AppSpacing.sm),
@@ -424,7 +538,7 @@ class _GroupDetailsState extends State<GroupDetails> {
                         _DebtListViewer(debts: data.debts)
                       else
                         Text(
-                          'No debts found.',
+                          'No hay deudas.',
                           style: AppTypography.bodyMd(
                             color: AppSemanticColors.slate600,
                           ),
@@ -432,11 +546,25 @@ class _GroupDetailsState extends State<GroupDetails> {
                     ],
                     const SizedBox(height: AppSpacing.sm),
 
-                    Text(
-                      'Crew & Friends',
-                      style: AppTypography.titleMd(
-                        color: AppSemanticColors.slate900,
-                      ),
+                    // "Manage" abre la hoja de miembros (donde se dan de
+                    // baja); el "+" del final de la fila da de alta. Son
+                    // acciones distintas porque `POST` y `DELETE` son
+                    // endpoints distintos.
+                    Row(
+                      children: [
+                        Text(
+                          'Amigos y grupo',
+                          style: AppTypography.titleMd(
+                            color: AppSemanticColors.slate900,
+                          ),
+                        ),
+                        const Spacer(),
+                        AppTextAction(
+                          label: 'Gestionar',
+                          onPressed: () =>
+                              _showMembersSheet(detail, data.userProfiles),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     SingleChildScrollView(
@@ -453,6 +581,29 @@ class _GroupDetailsState extends State<GroupDetails> {
                             ),
                             const SizedBox(width: AppSpacing.xs),
                           ],
+                          InkWell(
+                            onTap: () => _showAddMemberDialog(detail),
+                            borderRadius: AppRadius.mdRadius,
+                            child: Padding(
+                              padding: const EdgeInsets.all(AppSpacing.xs),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.add_circle_outline,
+                                    color: AppSemanticColors.slate400,
+                                    size: 24,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Agregar',
+                                    style: AppTypography.bodySm(
+                                      color: AppSemanticColors.slate400,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -463,14 +614,13 @@ class _GroupDetailsState extends State<GroupDetails> {
                         Expanded(
                           child: AppQuickActionTile(
                             icon: const Icon(
-                              Icons.link,
+                              Icons.person_add,
                               color: AppMd3Colors.primaryContainer,
                               size: 20,
                             ),
                             iconBackground: AppMd3Colors.surfaceContainer,
-                            label: 'Share Link',
-                            onTap:
-                                () {}, // Sin conectar: no hay endpoint de invitación.
+                            label: 'Agregar miembro',
+                            onTap: () => _showAddMemberDialog(detail),
                           ),
                         ),
                         const SizedBox(width: AppSpacing.sm),
@@ -482,7 +632,7 @@ class _GroupDetailsState extends State<GroupDetails> {
                               size: 20,
                             ),
                             iconBackground: AppSemanticColors.positiveContainer,
-                            label: 'Balances',
+                            label: 'Saldos',
                             onTap: () => Navigator.pushNamed(
                               context,
                               AppRoutes.balances,
@@ -509,9 +659,9 @@ class _GroupDetailsState extends State<GroupDetails> {
 
                     if (!data.hasExpenses) ...[
                       SectionHeader(
-                        title: 'Recent Expenses',
+                        title: 'Gastos recientes',
                         trailing: AppTextAction(
-                          label: 'Retry',
+                          label: 'Reintentar',
                           emphasized: true,
                           onPressed: _retry,
                         ),
@@ -520,12 +670,12 @@ class _GroupDetailsState extends State<GroupDetails> {
                       _SettlementsUnavailableNotice(
                         error: data.expensesError!,
                         onRetry: _retry,
-                        title: 'Expenses unavailable',
+                        title: 'Gastos no disponibles',
                       ),
                       const SizedBox(height: AppSpacing.xl),
                     ] else ...[
                       SectionHeader(
-                        title: 'Recent Expenses',
+                        title: 'Gastos recientes',
                         trailing: Text(
                           '${expenses.length} total',
                           style: AppTypography.bodySm(
@@ -540,9 +690,14 @@ class _GroupDetailsState extends State<GroupDetails> {
                           children: [
                             for (final category in categories) ...[
                               AppFilterChip(
-                                label: category,
+                                // La comparación y el `dotColor` usan el
+                                // string crudo de la API a propósito; sólo
+                                // lo que se muestra pasa por el mapeo.
+                                label: category == 'Todos'
+                                    ? 'Todos'
+                                    : categoryDisplayLabel(category),
                                 selected: _categoryFilter == category,
-                                dotColor: category == 'All'
+                                dotColor: category == 'Todos'
                                     ? null
                                     : categoryVisual(category).$3,
                                 onTap: () => setState(
@@ -562,7 +717,7 @@ class _GroupDetailsState extends State<GroupDetails> {
                             vertical: AppSpacing.lg,
                           ),
                           child: Text(
-                            'No expenses yet.',
+                            'Todavía no hay gastos.',
                             style: AppTypography.bodyMd(
                               color: AppSemanticColors.slate600,
                             ),
@@ -587,7 +742,7 @@ class _GroupDetailsState extends State<GroupDetails> {
                 right: AppSpacing.marginMobile,
                 bottom: AppSpacing.md,
                 child: AppButton(
-                  label: 'Add expense',
+                  label: 'Agregar gasto',
                   leadingIcon: const Icon(
                     Icons.add,
                     color: Colors.white,
@@ -618,12 +773,12 @@ class _GroupDetailsState extends State<GroupDetails> {
       final net = myNetForExpense(expense, myUserId, memberCount);
       if (net > 0.005) {
         status = ExpenseRowStatus.owed;
-        statusLabel = '+\$${net.toStringAsFixed(2)} for you';
+        statusLabel = '+\$${net.toStringAsFixed(2)} para vos';
       } else if (net < -0.005) {
         status = ExpenseRowStatus.owe;
-        statusLabel = 'You owe \$${net.abs().toStringAsFixed(2)}';
+        statusLabel = 'Debés \$${net.abs().toStringAsFixed(2)}';
       } else {
-        statusLabel = 'Settled';
+        statusLabel = 'Saldado';
       }
     }
 
@@ -636,7 +791,7 @@ class _GroupDetailsState extends State<GroupDetails> {
       iconBackground: iconBg,
       title: expense.title,
       metaText:
-          'Paid by ${_displayName(expense.payerUserId)} · ${expense.splitType == SplitType.equal ? 'Split equally' : 'Custom split'}',
+          'Pagó ${_displayName(expense.payerUserId)} · ${splitTypeLabel(expense.splitType)}',
       timeLabel: formatShortDate(expense.createdAt),
       totalAmountLabel: '\$${expense.totalAmount.toStringAsFixed(2)}',
       statusLabel: statusLabel,
@@ -673,8 +828,490 @@ class _BalanceBanner extends StatelessWidget {
         color: AppSemanticColors.positiveText,
       ),
       title: '$label $amount',
-      description: 'Based on settlement data from API',
+      description: 'Basado en los saldos de la API',
       background: background,
+    );
+  }
+}
+
+/// Alta de miembro: POST /groups/{id}/members}.
+///
+/// El endpoint acepta `email` **o** `user_id`, así que el selector de arriba
+/// decide cuál de los dos se manda. No se mandan ambos: el schema los declara
+/// opcionales, y mandarle la clave del que no se usó como `null` haría que el
+/// backend lo tomara como un valor explícito (mismo criterio que
+/// `updateGroup` en el repositorio).
+///
+/// El error se muestra acá adentro y no en un SnackBar, igual que
+/// `_RenameGroupDialog`: el mensaje del backend ("ese email no está
+/// registrado", "ya es miembro") es el dato útil, y un SnackBar detrás del
+/// diálogo queda tapado.
+class _AddMemberDialog extends StatefulWidget {
+  const _AddMemberDialog({required this.groupId});
+
+  final String groupId;
+
+  @override
+  State<_AddMemberDialog> createState() => _AddMemberDialogState();
+}
+
+class _AddMemberDialogState extends State<_AddMemberDialog> {
+  late final TextEditingController _controller;
+  bool _byEmail = true;
+  bool _isSubmitting = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleAdd() async {
+    final value = _controller.text.trim();
+    if (value.isEmpty) {
+      setState(() => _error = _byEmail
+          ? 'Escribe el email de la persona que quieres sumar.'
+          : 'Escribe el user_id de la persona que quieres sumar.');
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _error = null;
+    });
+
+    try {
+      await GroupRepository.instance.addMember(
+        widget.groupId,
+        email: _byEmail ? value : null,
+        userId: _byEmail ? null : value,
+      );
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = apiErrorMessage(error);
+        _isSubmitting = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Agregar miembro'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // El backend no trae código de invitación, así que "invitar" es
+          // literalmente dar de alta a alguien por email o user_id.
+          Row(
+            children: [
+              _ModeChip(
+                label: 'Email',
+                selected: _byEmail,
+                onTap: _isSubmitting
+                    ? null
+                    : () => setState(() {
+                          _byEmail = true;
+                          _error = null;
+                        }),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              _ModeChip(
+                label: 'User ID',
+                selected: !_byEmail,
+                onTap: _isSubmitting
+                    ? null
+                    : () => setState(() {
+                          _byEmail = false;
+                          _error = null;
+                        }),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          AppTextField(
+            label: _byEmail ? 'Email' : 'User ID',
+            controller: _controller,
+            prefixIcon: Icon(
+              _byEmail ? Icons.mail_outline : Icons.badge_outlined,
+              size: 20,
+            ),
+            keyboardType: _byEmail
+                ? TextInputType.emailAddress
+                : TextInputType.text,
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              _error!,
+              style: AppTypography.bodySm(
+                color: AppSemanticColors.negativeText,
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context, false),
+          child: const Text('Cancelar'),
+        ),
+        TextButton(
+          onPressed: _isSubmitting ? null : _handleAdd,
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Agregar'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Selector email / user_id del diálogo de alta. No reutiliza `AppFilterChip`
+/// porque ese es un chip de filtro con punto de color pensado para categorías
+/// de gasto, no para un toggle de dos opciones excluyentes.
+class _ModeChip extends StatelessWidget {
+  const _ModeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: AppRadius.mdRadius,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppMd3Colors.primaryContainer
+              : AppSemanticColors.slate100,
+          borderRadius: AppRadius.mdRadius,
+        ),
+        child: Text(
+          label,
+          style: AppTypography.bodySm(
+            color: selected
+                ? Colors.white
+                : AppSemanticColors.slate600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Hoja de miembros: lista el grupo y permite dar de baja a alguien.
+///
+/// Recibe `members` del `GroupDetail` (que ya vino en el `GET /detail`) en
+/// lugar de llamar por su cuenta a `GET /members`: `GroupMemberResponse` sólo
+/// trae `user_id` y `joined_at`, o sea exactamente lo que ya tiene el detail,
+/// así que una llamada extra no aportaría nada.
+///
+/// La baja se pide sin diálogo de confirmación: el backend ya es la fuente de
+/// verdad y rechaza (400/409) si el usuario arrastra gastos o deudas
+/// pendientes. El error se muestra con `showApiError` para que se vea el
+/// motivo real en vez de asumir que la baja entró.
+class _MembersSheet extends StatefulWidget {
+  const _MembersSheet({
+    required this.groupId,
+    required this.members,
+    required this.userProfiles,
+    required this.isSelf,
+    required this.onMemberRemoved,
+  });
+
+  final String groupId;
+  final List<GroupMember> members;
+
+  /// userId -> nombre, armado desde `/balances` (`GroupMember` no trae nombre).
+  final Map<String, UserProfile> userProfiles;
+  final bool Function(String userId) isSelf;
+  final VoidCallback onMemberRemoved;
+
+  @override
+  State<_MembersSheet> createState() => _MembersSheetState();
+}
+
+class _MembersSheetState extends State<_MembersSheet> {
+  /// Copia local de la lista, y no `widget.members` directo.
+  ///
+  /// `showModalBottomSheet` arma una ruta nueva, así que la hoja NO se
+  /// reconstruye cuando la pantalla de atrás refresca sus datos: sin esta
+  /// copia, el miembro dado de baja seguiría apareciendo en la lista hasta
+  /// que se cerrara la hoja.
+  late List<GroupMember> _members;
+
+  /// userIds con una baja en vuelo, para bloquear sólo esa fila y no toda la
+  /// hoja: dar de baja a dos personas a la vez sigue teniendo sentido.
+  final Set<String> _removing = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _members = [...widget.members];
+  }
+
+  Future<void> _remove(GroupMember member) async {
+    setState(() => _removing.add(member.userId));
+    try {
+      await GroupRepository.instance.removeMember(
+        widget.groupId,
+        member.userId,
+      );
+      if (!mounted) return;
+      final name = _nameFor(member.userId);
+      setState(() {
+        _removing.remove(member.userId);
+        _members = _members.where((m) => m.userId != member.userId).toList();
+      });
+      // Refresca la pantalla de atrás (conteos, balances, nombre del
+      // invitado). La hoja ya se actualizó sola con lo de arriba.
+      widget.onMemberRemoved();
+      // Confirmación de éxito con `ScaffoldMessenger` directo y no con
+      // `showApiError`: ese helper traduce *todo* `ApiException(0, ...)` a
+      // "No se pudo conectar con el servidor", así que un código 0 usado
+      // como mensaje de éxito se mostraría como un problema de red.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$name removed.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _removing.remove(member.userId));
+      showApiError(context, error);
+    }
+  }
+
+  /// Nombre a mostrar para un user_id del grupo.
+  ///
+  /// Sale de `/balances` (`userProfiles`); si no está —típico justo después
+  /// de un alta, antes de que `/balances` lo incluya— se cae al nombre del
+  /// usuario actual o a un placeholder con los primeros caracteres del UUID,
+  /// que es el mismo fallback que usa `_displayName` en la pantalla.
+  String _nameFor(String userId) {
+    final cached = widget.userProfiles[userId]?.name;
+    if (cached != null && cached.isNotEmpty) return cached;
+    if (widget.isSelf(userId)) return AuthSession.instance.userName ?? 'Vos';
+    return 'Miembro ${userId.substring(0, userId.length >= 8 ? 8 : userId.length)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          0,
+          AppSpacing.lg,
+          AppSpacing.lg,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Miembros',
+              style: AppTypography.titleMd(color: AppSemanticColors.slate900),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              '${_members.length} '
+              '${_members.length == 1 ? 'persona' : 'personas'} en este grupo',
+              style: AppTypography.bodySm(color: AppSemanticColors.slate600),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            if (_members.isEmpty)
+              Text(
+                'Este grupo todavía no tiene miembros.',
+                style: AppTypography.bodySm(color: AppSemanticColors.slate600),
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _members.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.xs),
+                  itemBuilder: (context, index) {
+                    final member = _members[index];
+                    final isSelf = widget.isSelf(member.userId);
+                    final name = _nameFor(member.userId);
+                    final isRemoving = _removing.contains(member.userId);
+
+                    return Row(
+                      children: [
+                        AppAvatar(
+                          initials: isSelf
+                              ? 'Y'
+                              : member.userId
+                                  .substring(0, 2)
+                                  .toUpperCase(),
+                          size: 36,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                isSelf ? '$name (you)' : name,
+                                style: AppTypography.bodyMd(
+                                  color: AppSemanticColors.slate900,
+                                ),
+                              ),
+                              Text(
+                                'Se unió el ${formatShortDate(member.joinedAt)}',
+                                style: AppTypography.bodySm(
+                                  color: AppSemanticColors.slate600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Sacarse a uno mismo del grupo no es una operación
+                        // que el endpoint soporte bien, así que el botón se
+                        // oculta en vez de dejar que el backend lo rechace.
+                        if (!isSelf)
+                          isRemoving
+                              ? const Padding(
+                                  padding: EdgeInsets.all(AppSpacing.sm),
+                                  child: SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                )
+                              : IconButton(
+                                  tooltip: 'Quitar del grupo',
+                                  icon: const Icon(
+                                    Icons.person_remove_outlined,
+                                    color: AppSemanticColors.negativeText,
+                                    size: 20,
+                                  ),
+                                  onPressed: () => _remove(member),
+                                ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet de ajustes del grupo.
+///
+/// Por ahora sólo el estado `active`/`settled` — es lo único que
+/// `PATCH /groups/{id}` además del nombre. Renombrar y borrar ya tienen su
+/// propio lugar en la pantalla (el título editable y el quick action).
+class _GroupSettingsSheet extends StatelessWidget {
+  const _GroupSettingsSheet({
+    required this.detail,
+    required this.effectiveStatus,
+    required this.onStatusChanged,
+  });
+
+  final GroupDetail detail;
+
+  /// Status a mostrar: el del servidor, o el override local si recién se
+  /// cambió (ver `_changeStatus`).
+  final GroupStatus effectiveStatus;
+  final Future<void> Function(GroupStatus status) onStatusChanged;
+
+  bool get _isSettled => effectiveStatus == GroupStatus.settled;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = _isSettled ? GroupStatus.active : GroupStatus.settled;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.lg,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Ajustes del grupo',
+            style: AppTypography.titleMd(color: AppSemanticColors.slate900),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            detail.groupName,
+            style: AppTypography.bodySm(color: AppSemanticColors.slate600),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // Estado actual + acción para alternarlo.
+          AppSettingsRow(
+            icon: Icon(
+              _isSettled ? Icons.check_circle : Icons.pending_actions,
+              color: AppSemanticColors.slate900,
+              size: 20,
+            ),
+            label: _isSettled ? 'Saldado' : 'Activo',
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _isSettled ? 'Reabrir' : 'Marcar como saldado',
+                  style: AppTypography.bodySm(
+                    color: AppMd3Colors.primaryContainer,
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right,
+                  size: 18,
+                  color: AppSemanticColors.slate400,
+                ),
+              ],
+            ),
+            onTap: () => onStatusChanged(target),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+
+          Text(
+            _isSettled
+                ? 'Marca este grupo como saldado. Los grupos saldados siguen '
+                    'abiertos como referencia pero dejan de contar como pendientes.'
+                : 'Marca como saldada toda deuda pendiente de este grupo.',
+            style: AppTypography.bodySm(color: AppSemanticColors.slate600),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -833,12 +1470,12 @@ class _RenameGroupDialogState extends State<_RenameGroupDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Rename group'),
+      title: const Text('Renombrar grupo'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           AppTextField(
-            label: 'Group name',
+            label: 'Nombre del grupo',
             controller: _nameController,
             prefixIcon: const Icon(Icons.edit),
           ),
@@ -854,7 +1491,7 @@ class _RenameGroupDialogState extends State<_RenameGroupDialog> {
       actions: [
         TextButton(
           onPressed: _isSubmitting ? null : () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
+          child: const Text('Cancelar'),
         ),
         TextButton(
           onPressed: _isSubmitting ? null : _handleSave,
@@ -864,7 +1501,7 @@ class _RenameGroupDialogState extends State<_RenameGroupDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Save'),
+              : const Text('Guardar'),
         ),
       ],
     );
@@ -878,7 +1515,7 @@ class _SettlementsUnavailableNotice extends StatelessWidget {
   const _SettlementsUnavailableNotice({
     required this.error,
     required this.onRetry,
-    this.title = 'Settlements unavailable',
+    this.title = 'Saldos no disponibles',
   });
 
   final Object error;
@@ -897,7 +1534,7 @@ class _SettlementsUnavailableNotice extends StatelessWidget {
       description: apiErrorMessage(error),
       background: AppSemanticColors.slate100,
       trailing: AppTextAction(
-        label: 'Retry',
+        label: 'Reintentar',
         emphasized: true,
         onPressed: onRetry,
       ),
@@ -943,8 +1580,8 @@ class _SettlementStatusBadge extends StatelessWidget {
           const SizedBox(width: AppSpacing.xs),
           Text(
             isSettled
-              ? 'Settled up'
-              : '$pendingCount pending${pendingCount == 1 ? '' : 's'}',
+              ? 'Todo saldado'
+              : '$pendingCount pendiente${pendingCount == 1 ? '' : 's'}',
             style: AppTypography.bodySm(
               color: textColor,
             ),
@@ -991,13 +1628,13 @@ class _DebtListViewer extends StatelessWidget {
           children: [
             if (owe.isEmpty && owed.isEmpty)
               Text(
-                'No pending debts.',
+                'No hay deudas pendientes.',
                 style: AppTypography.bodySm(color: AppSemanticColors.slate600),
               ),
             if (owe.isNotEmpty)
               _debtSection(
                 context: context,
-                label: 'You owe',
+                label: 'Debes',
                 items: owe,
                 icon: Icons.arrow_upward,
                 color: AppSemanticColors.negativeText,
@@ -1005,7 +1642,7 @@ class _DebtListViewer extends StatelessWidget {
             if (owed.isNotEmpty)
               _debtSection(
                 context: context,
-                label: 'You are owed',
+                label: 'Te deben',
                 items: owed,
                 icon: Icons.arrow_downward,
                 color: AppSemanticColors.positiveText,
@@ -1042,7 +1679,7 @@ class _DebtListViewer extends StatelessWidget {
         Row(
           children: [
             Text(
-              '${items.length} ${items.length == 1 ? 'debt' : 'debts'}',
+              '${items.length} ${items.length == 1 ? 'deuda' : 'deudas'}',
               style: AppTypography.bodySm(color: AppSemanticColors.slate600),
             ),
             const Spacer(),

@@ -11,6 +11,7 @@ class AppTextAction extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.emphasized = false,
+    this.destructive = false,
     this.icon,
     this.trailingIcon,
   });
@@ -18,14 +19,24 @@ class AppTextAction extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
 
-  /// true = texto indigo en negrita (ej. "Save"); false = texto slate (ej. "Cancel").
+  /// true = texto índigo en negrita (ej. "Save"); false = texto slate (ej. "Cancel").
   final bool emphasized;
+
+  /// true = texto rojo, para acciones que deshacen algo (ej. "Reject
+  /// payment"). Solo cambia el color: la tipografía no se toca, para no
+  /// desalinear las acciones de texto que ya existen.
+  final bool destructive;
+
   final Widget? icon;
   final Widget? trailingIcon;
 
   @override
   Widget build(BuildContext context) {
-    final color = emphasized ? AppMd3Colors.primaryContainer : AppSemanticColors.slate600;
+    final color = destructive
+        ? AppSemanticColors.negativeText
+        : (emphasized
+              ? AppMd3Colors.primaryContainer
+              : AppSemanticColors.slate600);
 
     return TextButton(
       onPressed: onPressed,

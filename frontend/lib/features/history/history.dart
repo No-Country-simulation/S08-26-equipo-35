@@ -30,7 +30,7 @@ class History extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppMd3Colors.background,
       appBar: AppTopBar(
-        title: 'History',
+        title: 'Historial',
         leading: const AppIconBox(
           icon: Icon(Icons.call_split, color: Colors.white, size: 18),
           background: AppMd3Colors.primaryContainer,
@@ -62,9 +62,9 @@ class History extends StatelessWidget {
           children: [
             TripSummaryCard(
               imageUrl: 'https://picsum.photos/seed/barcelona2/200/200',
-              title: 'Barcelona Summer Trip',
+              title: 'Viaje a Barcelona',
               emoji: '🇪🇸',
-              subtitle: 'July 12 – 19, 2024 · 4 explorers',
+              subtitle: '12 – 19 jul 2024 · 4 exploradores',
               trailingAction: AppCircleIconButton(
                 icon: Icons.ios_share,
                 onPressed: () {},
@@ -73,7 +73,7 @@ class History extends StatelessWidget {
             const SizedBox(height: AppSpacing.md),
 
             const AppSearchField(
-              hintText: 'Search expenses, participants, notes...',
+              hintText: 'Buscar gastos, participantes, notas...',
             ),
             const SizedBox(height: AppSpacing.sm),
 
@@ -82,12 +82,12 @@ class History extends StatelessWidget {
               children: [
                 AppDropdownChip(
                   icon: Icons.calendar_month,
-                  label: 'July 2024',
+                  label: 'jul 2024',
                   onTap: () {},
                 ),
                 AppDropdownChip(
-                  prefixText: 'Sort by: ',
-                  label: 'Newest',
+                  prefixText: 'Ordenar por: ',
+                  label: 'Más recientes',
                   onTap: () {},
                 ),
               ],
@@ -99,7 +99,7 @@ class History extends StatelessWidget {
               child: Row(
                 children: [
                   AppFilterChip(
-                    label: 'All   14',
+                    label: 'Todos   14',
                     selected: true,
                     onTap: () {},
                   ),
@@ -147,7 +147,7 @@ class History extends StatelessWidget {
                 ),
                 const Spacer(),
                 AppTag(
-                  label: 'Group balance healthy',
+                  label: 'Balance del grupo sano',
                   background: AppSemanticColors.positiveContainer,
                   foreground: AppSemanticColors.positiveText,
                   uppercase: false,
@@ -159,7 +159,7 @@ class History extends StatelessWidget {
               children: [
                 Expanded(
                   child: AppStatCard(
-                    label: 'Total spend',
+                    label: 'Gasto total',
                     value: '\$1,420.00',
                     centered: true,
                     background: AppMd3Colors.surfaceContainer,
@@ -168,7 +168,7 @@ class History extends StatelessWidget {
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: AppStatCard(
-                    label: 'You paid',
+                    label: 'Vos pagaste',
                     value: '\$540.00',
                     centered: true,
                     background: AppMd3Colors.surfaceContainer,
@@ -179,7 +179,7 @@ class History extends StatelessWidget {
             const SizedBox(height: AppSpacing.lg),
 
             const DateSectionHeader(
-              dateLabel: 'TODAY — JULY 16',
+              dateLabel: 'HOY — 16 JUL',
               totalLabel: '\$142.50',
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -190,14 +190,14 @@ class History extends StatelessWidget {
                 size: 20,
               ),
               iconBackground: const Color(0xFFFFF7ED),
-              title: 'Paella & Sangria at Ca...',
-              paidByLabel: 'Paid by You',
+              title: 'Paella y sangría en Ca...',
+              paidByLabel: 'Pagó Vos',
               timeLabel: '2:15 PM',
               totalAmountLabel: '\$124.00',
-              statusLabel: 'You are owed \$94.00',
+              statusLabel: 'Te deben \$94.00',
               status: ActivityStatus.owed,
-              footerLeading: 'Split equally (You, María, Juan, Chloe)',
-              footerTrailing: 'Receipt attached',
+              footerLeading: 'Reparto igual (Vos, María, Juan, Lola)',
+              footerTrailing: 'Recibo adjunto',
               onTap: () {},
             ),
             const SizedBox(height: AppSpacing.xs),
@@ -208,24 +208,24 @@ class History extends StatelessWidget {
                 size: 20,
               ),
               iconBackground: const Color(0xFFF5F3FF),
-              title: 'Gelato in Gràcia',
-              paidByLabel: 'Paid by Chloe',
+              title: 'Helado en Gràcia',
+              paidByLabel: 'Pagó Lola',
               timeLabel: '11:30 AM',
               totalAmountLabel: '\$18.50',
-              statusLabel: 'You owe \$4.62',
+              statusLabel: 'Debes \$4.62',
               status: ActivityStatus.owe,
               footerLeading: '4 people · Pistachio & Stracciatella',
-              footerTrailing: 'Settled via group card',
+              footerTrailing: 'Saldado con la tarjeta del grupo',
               onTap: () {},
             ),
             const SizedBox(height: AppSpacing.sm),
             const PaymentConfirmationPill(
-              text: 'Juan P. paid María G. \$50.00 via Bizum · Jul 15',
+              text: 'Juan P. le pagó \$50.00 a María G. por Bizum · 15 jul',
             ),
             const SizedBox(height: AppSpacing.md),
 
             const DateSectionHeader(
-              dateLabel: 'YESTERDAY — JULY 15',
+              dateLabel: 'AYER — 15 JUL',
               totalLabel: '\$152.20',
               dotColor: AppSemanticColors.slate400,
             ),
@@ -237,13 +237,13 @@ class History extends StatelessWidget {
                 size: 20,
               ),
               iconBackground: const Color(0xFFFEFCE8),
-              title: 'Sagrada Família Tick...',
-              paidByLabel: 'Paid by María',
+              title: 'Entrada Sagrada Família...',
+              paidByLabel: 'Pagó María',
               timeLabel: '4:00 PM',
               totalAmountLabel: '\$104.00',
-              statusLabel: 'You owe \$26.00',
+              statusLabel: 'Debes \$26.00',
               status: ActivityStatus.owe,
-              footerLeading: 'Fast track tower access',
+              footerLeading: 'Acceso rápido a la torre',
               footerTrailing: '4 e-tickets saved',
               onTap: () {},
             ),
@@ -255,20 +255,20 @@ class History extends StatelessWidget {
                 size: 20,
               ),
               iconBackground: const Color(0xFFF0F9FF),
-              title: 'Supermarket M...',
-              paidByLabel: 'Paid by You',
+              title: 'Supermercado M...',
+              paidByLabel: 'Pagó Vos',
               timeLabel: '9:15 AM',
               totalAmountLabel: '\$48.20',
-              statusLabel: 'You are owed \$36.15',
+              statusLabel: 'Te deben \$36.15',
               status: ActivityStatus.owed,
-              footerLeading: 'Breakfast provisions · Poblenou',
-              footerTrailing: 'Auto-categorized',
+              footerLeading: 'Desayuno · Poblenou',
+              footerTrailing: 'Categorizado automáticamente',
               onTap: () {},
             ),
             const SizedBox(height: AppSpacing.md),
 
             const DateSectionHeader(
-              dateLabel: 'JULY 14',
+              dateLabel: '14 JUL',
               totalLabel: '\$96.00',
               dotColor: AppSemanticColors.slate400,
             ),
@@ -280,14 +280,14 @@ class History extends StatelessWidget {
                 size: 20,
               ),
               iconBackground: const Color(0xFFF0F9FF),
-              title: 'Airport Taxi (Aerobus)',
-              paidByLabel: 'Paid by Juan',
-              timeLabel: '8:45 PM',
+              title: 'Taxi del aeropuerto (Aerobus)',
+              paidByLabel: 'Pagó Juan',
+              timeLabel: '20:45',
               totalAmountLabel: '\$36.00',
-              statusLabel: 'You owe \$12.00',
+              statusLabel: 'Debes \$12.00',
               status: ActivityStatus.owe,
-              footerLeading: 'BCN Terminal 1 to Eixample',
-              footerTrailing: '3 riders',
+              footerLeading: 'BCN Terminal 1 al Eixample',
+              footerTrailing: '3 pasajeros',
               onTap: () {},
             ),
             const SizedBox(height: AppSpacing.xs),
@@ -298,20 +298,20 @@ class History extends StatelessWidget {
                 size: 20,
               ),
               iconBackground: const Color(0xFFFFF1F2),
-              title: 'Airbnb City Tax & K...',
-              paidByLabel: 'Paid by María',
-              timeLabel: '2:30 PM',
+              title: 'Impuesto municipal y K...',
+              paidByLabel: 'Pagó María',
+              timeLabel: '14:30',
               totalAmountLabel: '\$60.00',
-              statusLabel: 'You owe \$15.00',
+              statusLabel: 'Debes \$15.00',
               status: ActivityStatus.owe,
-              footerLeading: 'Tourist tax & late check-in fee',
-              footerTrailing: 'Flat rate',
+              footerLeading: 'Impuesto turístico y recargo por check-in tardío',
+              footerTrailing: 'Tarifa fija',
               onTap: () {},
             ),
             const SizedBox(height: AppSpacing.lg),
 
             AppButton(
-              label: 'Export CSV / PDF report',
+              label: 'Exportar informe CSV / PDF',
               variant: AppButtonVariant.secondary,
               leadingIcon: const Icon(
                 Icons.download,
@@ -323,7 +323,7 @@ class History extends StatelessWidget {
             const SizedBox(height: AppSpacing.xs),
             Center(
               child: Text(
-                'Automated expense audit generated with live SplitFlow balances',
+                'Auditoría automática de gastos generada con los saldos de SplitFlow',
                 textAlign: TextAlign.center,
                 style: AppTypography.bodySm(color: AppSemanticColors.slate400),
               ),
@@ -334,13 +334,13 @@ class History extends StatelessWidget {
       ),
       bottomNavigationBar: AppBottomNavBar(
         items: const [
-          AppBottomNavItem(icon: Icons.groups, label: 'Groups'),
-          AppBottomNavItem(icon: Icons.receipt_long, label: 'Activity'),
+          AppBottomNavItem(icon: Icons.groups, label: 'Grupos'),
+          AppBottomNavItem(icon: Icons.receipt_long, label: 'Actividad'),
           AppBottomNavItem(
             icon: Icons.account_balance_wallet,
-            label: 'Balances',
+            label: 'Saldos',
           ),
-          AppBottomNavItem(icon: Icons.person, label: 'Profile'),
+          AppBottomNavItem(icon: Icons.person, label: 'Perfil'),
         ],
         currentIndex: 1,
         onTap: (index) => _onNavTap(context, index),

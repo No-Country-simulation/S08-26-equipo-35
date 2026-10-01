@@ -1,4 +1,5 @@
 import '../../../core/network/api_client.dart';
+import '../../balances/data/balance_summary.dart';
 import 'auth_session.dart';
 import 'user_profile.dart';
 
@@ -79,5 +80,20 @@ class AuthRepository {
   Future<void> deleteAccount() async {
     await ApiClient.delete('/me', authenticated: true);
     await AuthSession.instance.clear();
+  }
+
+  /// Balance del usuario agregado a TODOS sus grupos, en una sola llamada
+  /// (GET /users/me/balance-summary). Es lo que usa Home para el total
+  /// general y para el balance de cada tarjeta de grupo — antes eso se
+  /// armaba en el cliente con un pedido por grupo.
+  Future<UserGlobalSummary> getMyBalanceSummary() async {
+    final response = await ApiClient.get(
+      '/users/me/balance-summary',
+      authenticated: true,
+    );
+    if (response is! Map<String, dynamic>) {
+      throw ApiException(0, 'Respuesta inesperada del servidor.');
+    }
+    return UserGlobalSummary.fromJson(response);
   }
 }

@@ -32,16 +32,16 @@ class OnboardingScreen extends StatelessWidget {
             children: [
               _LogoMark(),
               const SizedBox(height: AppSpacing.lg),
-              const AppTag(label: 'Effortless group math'),
+              const AppTag(label: 'Cuentas en grupo sin esfuerzo'),
               const SizedBox(height: AppSpacing.md),
               Text(
-                'Welcome to SplitFlow',
+                'Te damos la bienvenida a SplitFlow',
                 textAlign: TextAlign.center,
                 style: AppTypography.headlineLg(color: AppSemanticColors.slate900),
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                'Split expenses with friends, no stress, no math.',
+                'Reparte gastos con amigos: sin estrés y sin cuentas.',
                 textAlign: TextAlign.center,
                 style: AppTypography.bodyLg(color: AppSemanticColors.slate600),
               ),
@@ -56,8 +56,8 @@ class OnboardingScreen extends StatelessWidget {
                     child: FeatureCard(
                       icon: const Icon(Icons.receipt_long, color: AppMd3Colors.primaryContainer),
                       iconBackground: AppMd3Colors.surfaceContainer,
-                      title: 'Smart Splitting',
-                      description: 'Unequal, percentages, itemized bills',
+                      title: 'Reparto inteligente',
+                      description: 'Desigual, por porcentaje o por concepto',
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
@@ -65,8 +65,8 @@ class OnboardingScreen extends StatelessWidget {
                     child: FeatureCard(
                       icon: const Icon(Icons.lock_open, color: AppSemanticColors.positive),
                       iconBackground: AppSemanticColors.positiveContainer,
-                      title: 'Zero Passwords',
-                      description: 'Instant one-tap login magic links',
+                      title: 'Sin contraseñas',
+                      description: 'Acceso instantáneo con enlaces mágicos',
                     ),
                   ),
                 ],
@@ -94,7 +94,7 @@ class _LogoMark extends StatelessWidget {
             borderRadius: AppRadius.lgRadius,
           ),
           child: Center(
-            child: Text('img', style: AppTypography.bodySm(color: AppSemanticColors.slate400)),
+            child: Text('imagen', style: AppTypography.bodySm(color: AppSemanticColors.slate400)),
           ),
         ),
         Positioned(
@@ -173,23 +173,23 @@ class _AuthCardState extends State<_AuthCard> {
       child: Column(
         children: [
           AppButton(
-            label: 'Continue with Google',
+            label: 'Continuar con Google',
             variant: AppButtonVariant.outline,
             leadingIcon: const Icon(Icons.g_mobiledata, size: 24), // placeholder del logo de Google
             onPressed: () {},
           ),
           const SizedBox(height: AppSpacing.md),
-          const AppDividerWithLabel(label: 'or with email'),
+          const AppDividerWithLabel(label: 'o con email'),
           const SizedBox(height: AppSpacing.md),
           AppTextField(
-            label: 'Full name',
-            hintText: 'Alex Rivera',
+            label: 'Nombre completo',
+            hintText: 'Ana Rivera',
             controller: _nameController,
             prefixIcon: const Icon(Icons.person_outline),
           ),
           const SizedBox(height: AppSpacing.md),
           AppTextField(
-            label: 'Email address',
+            label: 'Email',
             hintText: 'alex@example.com',
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
@@ -197,7 +197,7 @@ class _AuthCardState extends State<_AuthCard> {
           ),
           const SizedBox(height: AppSpacing.md),
           AppTextField(
-            label: 'Password',
+            label: 'Contraseña',
             hintText: '••••••••',
             controller: _passwordController,
             obscureText: true,
@@ -205,7 +205,7 @@ class _AuthCardState extends State<_AuthCard> {
           ),
           const SizedBox(height: AppSpacing.md),
           AppButton(
-            label: 'Continue',
+            label: 'Continuar',
             isLoading: _isLoading,
             trailingIcon: _isLoading
                 ? null
@@ -217,14 +217,14 @@ class _AuthCardState extends State<_AuthCard> {
             TextSpan(
               style: AppTypography.bodySm(color: AppSemanticColors.slate400),
               children: [
-                const TextSpan(text: 'By continuing, you agree to our '),
+                const TextSpan(text: 'Al continuar, aceptas nuestros '),
                 TextSpan(
-                  text: 'Terms',
+                  text: 'Términos',
                   style: AppTypography.bodySm(color: AppMd3Colors.primaryContainer),
                 ),
                 const TextSpan(text: ' & '),
                 TextSpan(
-                  text: 'Privacy Policy',
+                  text: 'Política de privacidad',
                   style: AppTypography.bodySm(color: AppMd3Colors.primaryContainer),
                 ),
                 const TextSpan(
@@ -239,9 +239,9 @@ class _AuthCardState extends State<_AuthCard> {
             TextSpan(
               style: AppTypography.bodySm(color: AppSemanticColors.slate600),
               children: [
-                const TextSpan(text: 'Already have an account? '),
+                const TextSpan(text: '¿Ya tienes una cuenta? '),
                 TextSpan(
-                  text: 'Log in',
+                  text: 'Inicia sesión',
                   style: AppTypography.bodySm(color: AppMd3Colors.primaryContainer)
                       .copyWith(fontWeight: FontWeight.w600),
                   recognizer: TapGestureRecognizer()
@@ -282,10 +282,10 @@ class _TrustedCommunityCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Trusted Community', style: AppTypography.titleMd(color: AppSemanticColors.slate900)),
+                Text('Comunidad de confianza', style: AppTypography.titleMd(color: AppSemanticColors.slate900)),
                 const SizedBox(height: AppSpacing.xs2),
                 Text(
-                  'Trusted by 120,000+ friends & roommates to split effortlessly.',
+                  '120.000+ amigos y compañeros de casa ya reparten gastos sin esfuerzo.',
                   style: AppTypography.bodySm(color: AppSemanticColors.slate600),
                 ),
               ],

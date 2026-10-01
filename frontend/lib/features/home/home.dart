@@ -14,20 +14,19 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../core/network/api_client.dart';
-import '../../core/utils/settlement_status.dart';
 import '../../core/network/api_error_ui.dart';
 import '../../router/app_router.dart';
-import '../auth/data/auth_session.dart';
+import '../auth/data/auth_repository.dart';
+import '../balances/data/balance_summary.dart';
 import '../expenses/data/expense.dart';
 import '../expenses/data/expense_repository.dart';
 import '../groups/data/group.dart';
 import '../groups/group_picker_dialog.dart';
 import '../groups/data/group_detail.dart';
 import '../groups/data/group_repository.dart';
-import '../groups/domain/balance_calculator.dart';
 
-/// Resumen ya calculado de un grupo: el grupo en sí + cuántos miembros
-/// tiene + el balance neto del usuario + el último gasto agregado.
+/// Resumen ya calculado de un grupo: el grupo en sÃ­ + cuÃ¡ntos miembros
+/// tiene + el balance neto del usuario + el Ãºltimo gasto agregado.
 class _GroupSummary {
   const _GroupSummary({
     required this.group,
@@ -39,7 +38,7 @@ class _GroupSummary {
   final Group group;
   final int memberCount;
 
-  /// null = no se pudo calcular (ej. no hay userId de sesión disponible) —
+  /// null = no se pudo calcular (ej. no hay userId de sesiÃ³n disponible) â€”
   /// distinto de 0, que significa "saldado de verdad".
   final double? netBalance;
   final Expense? lastExpense;
@@ -99,58 +98,47 @@ class _HomeState extends State<Home> {
     }
   }
 
-  /// Trae los grupos y, para cada uno, su detalle (miembros) y sus gastos,
-  /// y calcula el balance. Se hace secuencial (grupo por grupo) en vez de
-  /// todo en paralelo para no saturar de golpe un backend gratuito de
-  /// Render — si tu API aguanta más carga, se puede paralelizar con
-  /// Future.wait sobre la lista completa de grupos.
+  /// Trae los grupos y el balance del usuario en todos ellos, y por grupo
+  /// su detalle (miembros) y sus gastos.
+  ///
+  /// El balance sale de UN solo pedido â€” `GET /users/me/balance-summary`
+  /// devuelve `net` global y el `net` de cada grupo en `per_group`. Antes
+  /// esta pantalla armaba lo mismo en el cliente: `GET /debts/me` + un
+  /// `calculateNetBalance` POR grupo, o sea 3N+1 pedidos.
+  ///
+  /// `groupDetail` sigue siendo necesario por grupo: el summary global no
+  /// incluye `member_count`, y lo usan la etiqueta "N members" de cada
+  /// tarjeta y el `GroupPickerDialog`.
+  ///
+  /// El loop por grupo es secuencial a propÃ³sito para no saturar de golpe
+  /// un backend gratuito de Render â€” si tu API aguanta mÃ¡s carga, se puede
+  /// paralelizar con Future.wait sobre la lista completa de grupos.
   Future<_HomeData> _loadHomeData() async {
     final groups = await GroupRepository.instance.listGroups();
-    final myUserId = AuthSession.instance.userId;
+
+    // Si el summary falla, la pantalla igual muestra los grupos: los net
+    // quedan null (badge "unknown") en vez de caer en el error general.
+    UserGlobalSummary? summary;
+    try {
+      summary = await AuthRepository.instance.getMyBalanceSummary();
+    } on ApiException {
+      summary = null;
+    }
+
+    final netsByGroup = summary?.byGroupId ?? const <String, PerGroupUserSummary>{};
 
     final summaries = <_GroupSummary>[];
-    double? overall = myUserId == null ? null : 0;
-    double iOwe = 0;
-    double owedToMe = 0;
-    int pendingCount = 0;
-
     for (final group in groups) {
+      // El balance no depende de estos pedidos, asÃ­ que sobrevive aunque
+      // el grupo falle: se conserva en vez de volver a null.
+      final net = netsByGroup[group.groupId]?.net;
       try {
         final results = await Future.wait([
           GroupRepository.instance.groupDetail(group.groupId),
           ExpenseRepository.instance.listGroupExpenses(group.groupId),
-          GroupRepository.instance.listMyDebts(group.groupId),
         ]);
         final detail = results[0] as GroupDetail;
         final expenses = results[1] as List<Expense>;
-        final myDebts = results[2] as List<DebtResponse>;
-
-        // Deudas pendientes de ESTE grupo donde participo (GET /debts/me
-        // ya viene filtrado por el token, pero se chequea la dirección
-        // por si acaso). PAID no cuenta como pendiente.
-        if (myUserId != null) {
-          for (final d in myDebts) {
-            if (!isPendingStatus(d.status)) continue;
-            final amount = double.tryParse(d.amount) ?? 0;
-            if (d.debtorUserId == myUserId) {
-              iOwe += amount;
-              pendingCount++;
-            } else if (d.creditorUserId == myUserId) {
-              owedToMe += amount;
-              pendingCount++;
-            }
-          }
-        }
-
-        double? net;
-        if (myUserId != null) {
-          net = calculateNetBalance(
-            expenses: expenses,
-            myUserId: myUserId,
-            memberCount: detail.members.length,
-          );
-          overall = (overall ?? 0) + net;
-        }
 
         Expense? last;
         for (final e in expenses) {
@@ -170,7 +158,7 @@ class _HomeState extends State<Home> {
           _GroupSummary(
             group: group,
             memberCount: 0,
-            netBalance: null,
+            netBalance: net,
           ),
         );
       }
@@ -178,10 +166,12 @@ class _HomeState extends State<Home> {
 
     return _HomeData(
       groups: summaries,
-      overallNet: overall,
-      iOwe: iOwe,
-      owedToMe: owedToMe,
-      pendingCount: pendingCount,
+      overallNet: summary?.net,
+      iOwe: summary?.totalOwed ?? 0,
+      owedToMe: summary?.totalToReceive ?? 0,
+      pendingCount: summary == null
+          ? 0
+          : summary.perGroup.fold(0, (acc, g) => acc + g.pendingCount),
     );
   }
 
@@ -190,7 +180,7 @@ class _HomeState extends State<Home> {
     return Scaffold(
       backgroundColor: AppMd3Colors.background,
       appBar: AppTopBar(
-        title: 'Home',
+        title: 'Inicio',
         leading: const AppIconBox(
           icon: Icon(Icons.call_split, color: Colors.white, size: 18),
           background: AppMd3Colors.primaryContainer,
@@ -228,19 +218,19 @@ class _HomeState extends State<Home> {
                       child: Row(
                         children: [
                           AppFilterChip(
-                            label: 'All',
+                            label: 'Todos',
                             selected: true,
                             onTap: () {},
                           ),
                           const SizedBox(width: AppSpacing.xs),
                           AppFilterChip(
-                            label: 'Trips',
+                            label: 'Viajes',
                             selected: false,
                             onTap: () {},
                           ),
                           const SizedBox(width: AppSpacing.xs),
                           AppFilterChip(
-                            label: 'Apartment',
+                            label: 'Apartamento',
                             selected: false,
                             onTap: () {},
                           ),
@@ -265,7 +255,7 @@ class _HomeState extends State<Home> {
                       const _EmptyState()
                     else ...[
                       SectionHeader(
-                        title: 'Active Groups',
+                        title: 'Grupos activos',
                         count: data.groups.length,
                         trailing: IconButton(
                           icon: const Icon(
@@ -295,7 +285,7 @@ class _HomeState extends State<Home> {
                 right: AppSpacing.marginMobile,
                 bottom: AppSpacing.md,
                 child: AppButton(
-                  label: 'Add Expense',
+                  label: 'Agregar gasto',
                   leadingIcon: const Icon(
                     Icons.add,
                     color: Colors.white,
@@ -306,11 +296,11 @@ class _HomeState extends State<Home> {
                       ? null
                       : () async {
                           // Capturado antes de cualquier await para no
-                          // usar el BuildContext a través de un gap.
+                          // usar el BuildContext a travÃ©s de un gap.
                           final navigator = Navigator.of(context);
                           // Con 1 solo grupo no hay nada que elegir: va
                           // directo. Con varios, pide el grupo en un
-                          // diálogo antes de abrir Log Expense.
+                          // diÃ¡logo antes de abrir Log Expense.
                           String? groupId = data.groups.first.group.groupId;
                           if (data.groups.length > 1) {
                             groupId = await showDialog<String>(
@@ -342,13 +332,13 @@ class _HomeState extends State<Home> {
       ),
       bottomNavigationBar: AppBottomNavBar(
         items: const [
-          AppBottomNavItem(icon: Icons.groups, label: 'Groups'),
-          AppBottomNavItem(icon: Icons.receipt_long, label: 'Activity'),
+          AppBottomNavItem(icon: Icons.groups, label: 'Grupos'),
+          AppBottomNavItem(icon: Icons.receipt_long, label: 'Actividad'),
           AppBottomNavItem(
             icon: Icons.account_balance_wallet,
-            label: 'Balances',
+            label: 'Saldos',
           ),
-          AppBottomNavItem(icon: Icons.person, label: 'Profile'),
+          AppBottomNavItem(icon: Icons.person, label: 'Perfil'),
         ],
         currentIndex: 0,
         onTap: (index) => _onNavTap(context, index),
@@ -359,7 +349,7 @@ class _HomeState extends State<Home> {
   /// Banner de settlements pendientes:
   /// - mientras carga, mensaje neutro;
   /// - si hubo error, no se puede afirmar nada;
-  /// - con deudas pendientes, cuánto debes y cuánto te deben (GET /debts/me);
+  /// - con deudas pendientes, cuÃ¡nto debes y cuÃ¡nto te deben (GET /debts/me);
   /// - sin deudas, el mensaje de "todo en orden".
   Widget _settlementsBanner({
     required bool loading,
@@ -372,8 +362,8 @@ class _HomeState extends State<Home> {
           Icons.help_outline,
           color: AppSemanticColors.slate400,
         ),
-        title: 'Settlements unavailable',
-        description: 'We could not load your pending settlements.',
+        title: 'Saldos no disponibles',
+        description: 'No pudimos cargar tus saldos pendientes.',
         background: AppSemanticColors.slate100,
       );
     }
@@ -384,8 +374,8 @@ class _HomeState extends State<Home> {
           Icons.hourglass_empty,
           color: AppMd3Colors.primaryContainer,
         ),
-        title: 'Checking settlements…',
-        description: 'Looking for pending settlements in your groups.',
+        title: 'Revisando saldos…',
+        description: 'Buscando saldos pendientes en tus grupos.',
         background: AppMd3Colors.surfaceContainerLow,
       );
     }
@@ -397,7 +387,7 @@ class _HomeState extends State<Home> {
           color: AppMd3Colors.primaryContainer,
         ),
         title: "You're in good shape!",
-        description: 'No urgent settlements pending today.',
+        description: 'No hay saldos urgentes por hoy.',
       );
     }
 
@@ -406,21 +396,21 @@ class _HomeState extends State<Home> {
         Icons.account_balance_wallet,
         color: AppSemanticColors.negativeText,
       ),
-      title: 'Settlements pending',
+      title: 'Saldos pendientes',
       background: AppSemanticColors.negativeContainer,
       descriptionWidget: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (data.iOwe > 0)
             Text(
-              'You owe \$${data.iOwe.toStringAsFixed(2)}',
+              'Debes \$${data.iOwe.toStringAsFixed(2)}',
               style: AppTypography.bodySm(
                 color: AppSemanticColors.negativeText,
               ),
             ),
           if (data.owedToMe > 0)
             Text(
-              'You are owed \$${data.owedToMe.toStringAsFixed(2)}',
+              'Te deben \$${data.owedToMe.toStringAsFixed(2)}',
               style: AppTypography.bodySm(
                 color: AppSemanticColors.positiveText,
               ),
@@ -447,23 +437,23 @@ class _HomeState extends State<Home> {
     } else if (net > 0.005) {
       status = BalanceBadgeStatus.owed;
       amountLabel = '+\$${net.toStringAsFixed(2)}';
-      caption = 'you are owed';
+      caption = 'te deben';
     } else if (net < -0.005) {
       status = BalanceBadgeStatus.owe;
       amountLabel = '-\$${net.abs().toStringAsFixed(2)}';
-      caption = 'you owe';
+      caption = 'debes';
     } else {
       status = BalanceBadgeStatus.settled;
       amountLabel = '\$0.00';
-      caption = 'settled';
+      caption = 'saldado';
     }
 
     final metaText = summary.lastExpense != null
-        ? 'Last added: ${summary.lastExpense!.title} (\$${summary.lastExpense!.totalAmount.toStringAsFixed(2)})'
-        : 'No expenses yet';
+        ? 'Último: ${summary.lastExpense!.title} (\$${summary.lastExpense!.totalAmount.toStringAsFixed(2)})'
+        : 'Todavía no hay gastos';
 
     return GroupCard(
-      // Ícono genérico: la API no tiene campo de ícono/color por grupo.
+      // Ãcono genÃ©rico: la API no tiene campo de Ã­cono/color por grupo.
       icon: const Icon(Icons.groups, color: AppMd3Colors.primaryContainer),
       iconBackground: AppMd3Colors.surfaceContainer,
       title: summary.group.groupName,
@@ -544,7 +534,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// Tarjeta de resumen superior. Muestra "—" mientras carga; una vez que
+/// Tarjeta de resumen superior. Muestra "â€”" mientras carga; una vez que
 /// `overallNet` llega, ya es el balance real sumado de todos los grupos.
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
@@ -568,11 +558,11 @@ class _SummaryCard extends StatelessWidget {
         ? '—'
         : '${isOwed ? '+' : '-'}\$${net.abs().toStringAsFixed(2)}';
     final statusLabel = unknown
-        ? 'Overall balance'
-        : (isOwed ? 'Overall, you are owed' : 'Overall, you owe');
+        ? 'Balance general'
+        : (isOwed ? 'En total, te deben' : 'En total, debes');
     final countLabel = groupCount == null
-        ? 'Across your active groups'
-        : 'Across $groupCount active group${groupCount == 1 ? '' : 's'}';
+        ? 'En tus grupos activos'
+        : 'En $groupCount grupo${groupCount == 1 ? '' : 's'} activo${groupCount == 1 ? '' : 's'}';
 
     return Container(
       width: double.infinity,
@@ -682,7 +672,7 @@ class _NewGroupAction extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.xs2),
             Text(
-              'New Group',
+              'Nuevo grupo',
               style: AppTypography.labelMd(color: AppSemanticColors.slate900),
             ),
           ],
@@ -730,7 +720,7 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
   Future<void> _handleCreate() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      setState(() => _error = 'Please enter a group name.');
+      setState(() => _error = 'Escribe un nombre para el grupo.');
       return;
     }
 
@@ -761,13 +751,13 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('New Group'),
+      title: const Text('Nuevo grupo'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           AppTextField(
-            label: 'Group name',
-            hintText: 'e.g. Trip to Barcelona',
+            label: 'Nombre del grupo',
+            hintText: 'Ej. Viaje a Barcelona',
             controller: _nameController,
             prefixIcon: const Icon(Icons.group_add),
           ),
@@ -783,7 +773,7 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
       actions: [
         TextButton(
           onPressed: _isSubmitting ? null : () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
+          child: const Text('Cancelar'),
         ),
         TextButton(
           onPressed: _isSubmitting ? null : _handleCreate,
@@ -793,7 +783,7 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Create'),
+              : const Text('Crear'),
         ),
       ],
     );

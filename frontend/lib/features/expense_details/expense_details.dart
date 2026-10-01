@@ -7,6 +7,9 @@ import '../../design_system/components/ui/buttons/app_button.dart';
 import '../../design_system/components/ui/buttons/app_circle_icon_button.dart';
 import '../../design_system/components/ui/cards/app_stat_card.dart';
 import '../../design_system/components/ui/chips/attribution_chip.dart';
+import '../../design_system/components/ui/chips/category_chip.dart';
+import '../../design_system/components/ui/chips/selectable_participant_chip.dart';
+import '../../design_system/components/ui/toggles/app_segmented_toggle.dart';
 import '../../design_system/components/ui/icon_boxes/app_icon_box.dart';
 import '../../design_system/components/ui/progress/segmented_progress_bar.dart';
 import '../../design_system/components/ui/row/app_icon_label.dart';
@@ -19,11 +22,13 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../core/utils/date_format.dart';
+import '../../core/utils/category_visual.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_error_ui.dart';
 import '../../design_system/components/ui/text_fields/app_text_field.dart';
 import '../expenses/data/expense.dart';
 import '../expenses/data/expense_repository.dart';
+import '../expenses/domain/equal_split.dart';
 import '../expenses/payer_picker_dialog.dart';
 import '../groups/data/group_detail.dart';
 import '../groups/data/group_repository.dart';
@@ -56,7 +61,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
 
   Future<Expense> _loadExpense() async {
     if (widget.expenseId == null) {
-      throw Exception('No expense ID provided');
+      throw Exception('No se pasó el ID del gasto');
     }
     return ExpenseRepository.instance.getExpense(widget.expenseId!);
   }
@@ -93,9 +98,9 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
 
   String _displayName(String userId) {
     if (userId == AuthSession.instance.userId) {
-      return AuthSession.instance.userName ?? 'You';
+      return AuthSession.instance.userName ?? 'Vos';
     }
-    return 'Member ${userId.substring(0, userId.length >= 8 ? 8 : userId.length)}';
+    return 'Miembro ${userId.substring(0, userId.length >= 8 ? 8 : userId.length)}';
   }
 
   String _initials(String userId) {
@@ -153,7 +158,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
     return Scaffold(
       backgroundColor: AppMd3Colors.background,
       appBar: AppTopBar(
-        title: 'Expense Details',
+        title: 'Detalles del gasto',
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppSemanticColors.slate900),
           onPressed: () => Navigator.pop(context),
@@ -230,7 +235,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
                           shape: BoxShape.circle,
                         ),
                       ),
-                      label: 'Settlement Active',
+                      label: 'Saldo activo',
                       background: Colors.transparent,
                       foreground: AppSemanticColors.positiveText,
                       uppercase: false,
@@ -290,7 +295,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
                       ),
                       const SizedBox(height: AppSpacing.md),
                       AppStatCard(
-                        label: 'Total Amount',
+                        label: 'Monto total',
                         value: '\$${expense.totalAmount.toStringAsFixed(2)}',
                         centered: true,
                       ),
@@ -300,7 +305,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
                           initials: _initials(expense.payerUserId),
                           size: 20,
                         ),
-                        prefix: 'Added by',
+                        prefix: 'Agregado por',
                         name: _displayName(expense.payerUserId),
                         timeLabel: formatShortDate(expense.createdAt),
                       ),
@@ -317,7 +322,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
 
                 // Payment Summary
                 Text(
-                  'PAYMENT SUMMARY',
+                  'RESUMEN DEL PAGO',
                   style: AppTypography.labelMd(color: AppSemanticColors.slate600),
                 ),
                 const SizedBox(height: AppSpacing.sm),
@@ -332,7 +337,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
                     size: 40,
                     radius: const BorderRadius.all(Radius.circular(20)),
                   ),
-                  label: 'Paid by',
+                  label: 'Pagado por',
                   value: _displayName(expense.payerUserId),
                   trailing: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -344,7 +349,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
                         ),
                       ),
                       Text(
-                        'In full',
+                        'Pagado por completo',
                         style: AppTypography.labelSm(
                           color: AppSemanticColors.positiveText,
                         ),
@@ -364,12 +369,15 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
                     size: 40,
                     radius: const BorderRadius.all(Radius.circular(20)),
                   ),
-                  label: 'Split Method',
+                  label: 'Método de reparto',
                   value: expense.splitType == SplitType.equal
-                      ? 'Split Equally'
-                      : 'Custom / Unequal',
+                      ? 'Reparto igual'
+                      : (expense.splitType == SplitType.exactAmount
+                          ? 'Personalizado / desigual'
+                          : 'Método desconocido'),
                   trailing: AppTag(
-                    label: '${expense.splits.length} People',
+                    label: '${expense.splits.length} persona'
+                      '${expense.splits.length == 1 ? '' : 's'}',
                     background: AppMd3Colors.surfaceContainer,
                     foreground: AppSemanticColors.slate600,
                     uppercase: false,
@@ -393,13 +401,13 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Split Breakdown',
+                            'Desglose del reparto',
                             style: AppTypography.titleMd(
                               color: AppSemanticColors.slate900,
                             ),
                           ),
                           AppTag(
-                            label: 'Verified',
+                            label: 'Verificado',
                             background: AppSemanticColors.positiveContainer,
                             foreground: AppSemanticColors.positiveText,
                             uppercase: false,
@@ -408,8 +416,10 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
                       ),
                       Text(
                         expense.splitType == SplitType.equal
-                            ? 'Equal split among participants'
-                            : 'Itemized per person',
+                            ? 'Reparto igual entre los participantes'
+                            : (expense.splitType == SplitType.exactAmount
+                                ? 'Por concepto y por persona'
+                                : 'La app no reconoce el método de reparto'),
                         style: AppTypography.bodySm(
                           color: AppSemanticColors.slate600,
                         ),
@@ -423,8 +433,8 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
                           ),
                           name: _displayName(split.userId),
                           subtitle: split.userId == expense.payerUserId
-                              ? 'Payer'
-                              : 'Participant',
+                              ? 'Pagó'
+                              : 'Participante',
                           amountLabel: '\$${split.amountOwed.toStringAsFixed(2)}',
                           percentageLabel:
                               '${(split.amountOwed / expense.totalAmount * 100).toStringAsFixed(1)}%',
@@ -448,7 +458,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
                           size: 16,
                           color: AppSemanticColors.positiveText,
                         ),
-                        text: 'Total split',
+                        text: 'Reparto total',
                         trailingText:
                             '\$${expense.totalAmount.toStringAsFixed(2)} (100% matched)',
                         background: AppSemanticColors.positiveContainer,
@@ -460,7 +470,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
 
                 // Receipt & Proof (placeholder)
                 SectionHeader(
-                  title: 'Receipt & Proof',
+                  title: 'Recibo y comprobante',
                   trailing: Text(
                     '0 photos attached',
                     style: AppTypography.bodySm(color: AppSemanticColors.slate400),
@@ -471,8 +481,8 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
                   children: [
                     Expanded(
                       child: AttachmentTile(
-                        addTitle: 'Add Photo',
-                        addSubtitle: 'Card slip or item',
+                        addTitle: 'Agregar foto',
+                        addSubtitle: 'Ticket de tarjeta o concepto',
                         onTap: () {
                           // TODO: Implementar subida de fotos
                         },
@@ -484,7 +494,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
 
                 // Botones de acción
                 AppButton(
-                  label: 'Edit Expense',
+                  label: 'Editar gasto',
                   variant: AppButtonVariant.secondary,
                   leadingIcon: const Icon(
                     Icons.edit_note,
@@ -496,7 +506,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
                 const SizedBox(height: AppSpacing.sm),
                 AppButton(
                   label:
-                      'Request \$${_getNetAmount(expense, myUserId).toStringAsFixed(2)} from Group',
+                      'Pedir \$${_getNetAmount(expense, myUserId).toStringAsFixed(2)} al grupo',
                   leadingIcon: const Icon(
                     Icons.send,
                     color: Colors.white,
@@ -524,7 +534,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
           Icons.account_balance_wallet_outlined,
           color: AppSemanticColors.positiveText,
         ),
-        title: 'Your Net Balance',
+        title: 'Tu balance neto',
         background: AppSemanticColors.positiveContainer,
         trailing: BalanceBadge(
           amountLabel: '+\$${netAmount.toStringAsFixed(2)}',
@@ -536,7 +546,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
               color: AppSemanticColors.slate600,
             ),
             children: [
-              const TextSpan(text: 'You paid '),
+              const TextSpan(text: 'Vos pagaste '),
               TextSpan(
                 text: '\$${expense.totalAmount.toStringAsFixed(2)}',
                 style: AppTypography.bodySm(
@@ -561,7 +571,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
           Icons.account_balance_wallet_outlined,
           color: AppSemanticColors.negativeText,
         ),
-        title: 'Your Net Balance',
+        title: 'Tu balance neto',
         background: AppSemanticColors.negativeContainer,
         trailing: BalanceBadge(
           amountLabel: '-\$${netAmount.abs().toStringAsFixed(2)}',
@@ -573,7 +583,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
               color: AppSemanticColors.slate600,
             ),
             children: [
-              const TextSpan(text: 'You owe '),
+              const TextSpan(text: 'Debes '),
               TextSpan(
                 text: '\$${netAmount.abs().toStringAsFixed(2)}',
                 style: AppTypography.bodySm(
@@ -592,7 +602,7 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
           color: AppSemanticColors.positiveText,
         ),
         title: "You're all settled",
-        description: 'No pending balance for this expense.',
+        description: 'Este gasto no tiene saldo pendiente.',
         background: AppSemanticColors.positiveContainer,
       );
     }
@@ -660,13 +670,13 @@ class _DeleteExpenseDialogState extends State<_DeleteExpenseDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Delete expense'),
+      title: const Text('Eliminar gasto'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Are you sure you want to delete "${widget.expenseTitle}"? This cannot be undone.',
+            '¿Seguro que querés eliminar "${widget.expenseTitle}"? Esta acción no se puede deshacer.',
           ),
           if (_error != null) ...[
             const SizedBox(height: AppSpacing.sm),
@@ -680,7 +690,7 @@ class _DeleteExpenseDialogState extends State<_DeleteExpenseDialog> {
       actions: [
         TextButton(
           onPressed: _isSubmitting ? null : () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
+          child: const Text('Cancelar'),
         ),
         TextButton(
           onPressed: _isSubmitting ? null : _handleDelete,
@@ -693,7 +703,7 @@ class _DeleteExpenseDialogState extends State<_DeleteExpenseDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Delete'),
+              : const Text('Eliminar'),
         ),
       ],
     );
@@ -720,6 +730,20 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
   List<GroupMember> _members = [];
   final Map<String, String> _userProfiles = {};
 
+  /// Categoría y reparto. Sólo se mandan si el usuario los tocó: el PUT
+  /// es un parche, así que mandar un split reconstruido sin necesidad
+  /// agrega chances de que el backend lo rechace.
+  ///
+  /// `_category` arranca en null cuando el gasto ya guardado trae una
+  /// categoría que esta app no reconoce (ver
+  /// `expenseCategoryFromApiLabel`) — en ese caso el chip queda sin
+  /// seleccionar y no se manda categoría, para no sobrescribir con una
+  /// cualquiera un valor que el usuario nunca tocó.
+  ExpenseCategory? _category;
+  SplitType _splitType = SplitType.equal;
+  final Set<String> _selectedMemberIds = {};
+  final Map<String, TextEditingController> _customAmountControllers = {};
+
   @override
   void initState() {
     super.initState();
@@ -728,7 +752,35 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
       text: widget.expense.totalAmount.toStringAsFixed(2),
     );
     _payerUserId = widget.expense.payerUserId;
+    _category = expenseCategoryFromApiLabel(widget.expense.expenseCategory);
+    // Puede ser `SplitType.unknown` si el backend agregó un modo de reparto
+    // que la app no conoce. Se deja pasar tal cual: el toggle de abajo es de
+    // dos segmentos y no puede representar "ninguno". Es seguro porque
+    // `splitTypeToApi` devuelve null para `unknown`, así que guardar sin
+    // tocar el toggle no manda `split_type` y no pisa el reparto del servidor.
+    _splitType = widget.expense.splitType;
+
+    // Los participantes iniciales son los del split guardado — pueden
+    // incluir gente que ya no es miembro, y eso es información que el
+    // selector de miembros no tiene.
+    for (final split in widget.expense.splits) {
+      _selectedMemberIds.add(split.userId);
+      _customAmountControllers.putIfAbsent(
+        split.userId,
+        () => TextEditingController(text: split.amountOwed.toStringAsFixed(2)),
+      );
+    }
     _loadPayerOptions();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _amountController.dispose();
+    for (final c in _customAmountControllers.values) {
+      c.dispose();
+    }
+    super.dispose();
   }
 
   /// Carga miembros (GET /groups/detail) + nombres (GET /balances) sin
@@ -758,8 +810,8 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
   String _displayName(String userId) {
     final profileName = _userProfiles[userId];
     if (profileName != null && profileName.trim().isNotEmpty) return profileName;
-    if (userId == AuthSession.instance.userId) return AuthSession.instance.userName ?? 'You';
-    return 'Member ${userId.substring(0, userId.length >= 8 ? 8 : userId.length)}';
+    if (userId == AuthSession.instance.userId) return AuthSession.instance.userName ?? 'Vos';
+    return 'Miembro ${userId.substring(0, userId.length >= 8 ? 8 : userId.length)}';
   }
 
   String _initials(String userId) {
@@ -789,11 +841,77 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
     }
   }
 
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _amountController.dispose();
-    super.dispose();
+  /// Suma de los montos personalizados de los participantes actuales.
+  double _customAllocatedTotal() {
+    var sum = 0.0;
+    for (final id in _selectedMemberIds) {
+      sum += double.tryParse(_customAmountControllers[id]?.text ?? '') ?? 0;
+    }
+    return sum;
+  }
+
+  double get _totalAmount =>
+      double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
+
+  /// Reparto a mandar si el usuario tocó participantes, montos o tipo de
+  /// split. null = no tocar el reparto guardado.
+  ///
+  /// Se manda completo (splits + split_type) cuando algo del reparto
+  /// cambió, porque el backend necesita ver los dos juntos para no quedar
+  /// con un EXACT_AMOUNT sin montos. Cuando el reparto es EQUAL se
+  /// recalcula igual acá con `equalSplit` — mandar `total/n` crudo genera
+  /// 33.33333333333333 y la suma de los splits no da el total.
+  List<({String userId, double amountOwed})>? _buildSplits() {
+    final participants = _selectedMemberIds.toList()..sort();
+    final total = _totalAmount;
+
+    final originalType = widget.expense.splitType;
+    final typeChanged = _splitType != originalType;
+    final participantsChanged = !_sameParticipants(participants);
+
+    // Los montos sólo importan para EXACT_AMOUNT; en EQUAL los recalcula
+    // el backend (y acá, para mandarlos consistentes).
+    final amountsChanged = _splitType == SplitType.exactAmount &&
+        !_sameCustomAmounts();
+
+    if (!typeChanged && !participantsChanged && !amountsChanged) return null;
+
+    if (participants.isEmpty) return null;
+
+    final splits = _splitType == SplitType.equal
+        ? equalSplit(total, participants)
+        : [
+            for (final id in participants)
+              (
+                userId: id,
+                amountOwed:
+                    double.tryParse(_customAmountControllers[id]?.text ?? '') ??
+                        0,
+              ),
+          ];
+    return splits;
+  }
+
+  bool _sameParticipants(List<String> current) {
+    final original =
+        widget.expense.splits.map((s) => s.userId).toSet();
+    return original.length == current.length &&
+        original.containsAll(current);
+  }
+
+  /// Compara los montos editados contra los que ya estaban guardados.
+  bool _sameCustomAmounts() {
+    final original = {
+      for (final s in widget.expense.splits) s.userId: s.amountOwed,
+    };
+    for (final entry in _customAmountControllers.entries) {
+      if (!original.containsKey(entry.key)) return false;
+      final current =
+          double.tryParse(entry.value.text.replaceAll(',', '.')) ?? 0;
+      // Tolerancia de medio centavo: los montos son de 2 decimales.
+      if ((current - original[entry.key]!).abs() > 0.005) return false;
+    }
+    return true;
   }
 
   Future<void> _handleSave() async {
@@ -801,9 +919,27 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
     final newAmount = double.tryParse(_amountController.text.replaceAll(',', '.'));
 
     if (newTitle.isEmpty || newAmount == null || newAmount <= 0) {
-      setState(() => _error = 'Please enter a valid description and amount.');
+      setState(() => _error = 'Escribe una descripción y un monto válidos.');
       return;
     }
+
+    final splits = _buildSplits();
+    if (splits != null && _splitType == SplitType.exactAmount) {
+      final allocated = splits.fold<double>(0, (acc, s) => acc + s.amountOwed);
+      // Tolerancia de medio centavo: los montos son de 2 decimales, así que
+      // un desfasaje de 1 centavo sí es un error real.
+      if ((allocated - newAmount).abs() > 0.005) {
+        setState(() => _error = 'Los montos personalizados no suman el total.');
+        return;
+      }
+    }
+
+    // Solo mandamos la categoría si el usuario la tocó: si el gasto vino
+    // con una categoría que no reconocemos, sobreescribirla sin que el
+    // usuario lo pidiera perdería el dato original.
+    final apiLabel = _category == null
+        ? null
+        : expenseCategoryApiLabel[_category!];
 
     setState(() {
       _isSubmitting = true;
@@ -816,6 +952,9 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
         title: newTitle,
         totalAmount: newAmount,
         payerUserId: _payerUserId == widget.expense.payerUserId ? null : _payerUserId,
+        splitType: splits == null ? null : _splitType,
+        expenseCategory: apiLabel,
+        splits: splits,
       );
       if (!mounted) return;
       Navigator.pop(context, updated);
@@ -837,12 +976,12 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Edit expense'),
+      title: const Text('Editar gasto'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           AppTextField(
-            label: 'Description',
+            label: 'Descripción',
             controller: _titleController,
             prefixIcon: const Icon(Icons.receipt_long),
           ),
@@ -851,7 +990,7 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
             controller: _amountController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
-              labelText: 'Amount',
+              labelText: 'Monto',
               prefixText: '\$ ',
               border: OutlineInputBorder(),
             ),
@@ -865,7 +1004,7 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
                 initials: _initials(_payerUserId ?? widget.expense.payerUserId),
                 size: 40,
               ),
-              label: 'Paid by',
+              label: 'Pagado por',
               value: _displayName(_payerUserId ?? widget.expense.payerUserId),
               trailing: _members.isEmpty
                   ? null
@@ -883,12 +1022,108 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
               style: AppTypography.bodySm(color: AppSemanticColors.negativeText),
             ),
           ],
+          const SizedBox(height: AppSpacing.lg),
+
+          // ---- Categoría ----
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Categoría',
+              style: AppTypography.bodySm(color: AppSemanticColors.slate600),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: ExpenseCategory.values.map((category) {
+              return CategoryChip(
+                category: category,
+                selected: _category == category,
+                onTap: () => setState(() => _category = category),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // ---- Reparto ----
+          AppSegmentedToggle(
+            options: const ['Reparto igual', 'Montos personalizados'],
+            selectedIndex: _splitType == SplitType.equal ? 0 : 1,
+            onChanged: (index) => setState(() {
+              _splitType = index == 0 ? SplitType.equal : SplitType.exactAmount;
+            }),
+          ),
+          const SizedBox(height: AppSpacing.md),
+
+          // Editar el reparto exige conocer a los miembros; sin ellos sólo
+          // se puede cambiar título, monto, pagador y categoría.
+          if (_members.isEmpty)
+            Text(
+              'Cargá los miembros del grupo para editar cómo se reparte este gasto.',
+              style: AppTypography.bodySm(color: AppSemanticColors.slate600),
+            )
+          else ...[
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: AppSpacing.sm,
+              mainAxisSpacing: AppSpacing.sm,
+              childAspectRatio: 3.2,
+              children: _members.map((member) {
+                final selected = _selectedMemberIds.contains(member.userId);
+                return SelectableParticipantChip(
+                  avatar: AppAvatar(
+                    initials: _initials(member.userId),
+                    size: 24,
+                  ),
+                  name: _displayName(member.userId),
+                  selected: selected,
+                  onTap: () => setState(() {
+                    if (selected) {
+                      _selectedMemberIds.remove(member.userId);
+                    } else {
+                      _selectedMemberIds.add(member.userId);
+                      _customAmountControllers.putIfAbsent(
+                        member.userId,
+                        TextEditingController.new,
+                      );
+                    }
+                  }),
+                );
+              }).toList(),
+            ),
+            if (_splitType == SplitType.exactAmount) ...[
+              const SizedBox(height: AppSpacing.sm),
+              for (final id in _selectedMemberIds) ...[
+                ParticipantAmountRow(
+                  avatar: AppAvatar(initials: _initials(id), size: 40),
+                  name: _displayName(id),
+                  subtitle: '',
+                  amountController: _customAmountControllers[id]!,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+              ],
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Asignado: \$${_customAllocatedTotal().toStringAsFixed(2)} '
+                'de \$${_totalAmount.toStringAsFixed(2)}',
+                style: AppTypography.bodySm(
+                  color: (_customAllocatedTotal() - _totalAmount).abs() <= 0.005
+                      ? AppSemanticColors.slate600
+                      : AppSemanticColors.negativeText,
+                ),
+              ),
+            ],
+          ],
         ],
       ),
+      scrollable: true,
       actions: [
         TextButton(
           onPressed: _isSubmitting ? null : () => Navigator.pop(context, null),
-          child: const Text('Cancel'),
+          child: const Text('Cancelar'),
         ),
         TextButton(
           onPressed: _isSubmitting ? null : _handleSave,
@@ -898,7 +1133,7 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Save'),
+              : const Text('Guardar'),
         ),
       ],
     );

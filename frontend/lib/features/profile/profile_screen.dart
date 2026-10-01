@@ -59,7 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (name.isEmpty || email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name and email cannot be empty.')),
+        const SnackBar(content: Text('El nombre y el email no pueden estar vacíos.')),
       );
       return;
     }
@@ -69,7 +69,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await AuthRepository.instance.updateProfile(name: name, email: email);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated.')),
+        const SnackBar(content: Text('Perfil actualizado.')),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -88,14 +88,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (oldPassword.isEmpty || newPassword.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Both password fields are required.')),
+        const SnackBar(content: Text('Los dos campos de contraseña son obligatorios.')),
       );
       return;
     }
 
     if (newPassword.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('New password must be at least 6 characters.')),
+        const SnackBar(content: Text('La nueva contraseña debe tener al menos 6 caracteres.')),
       );
       return;
     }
@@ -110,7 +110,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _newPasswordController.clear();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password updated.')),
+        const SnackBar(content: Text('Contraseña actualizada.')),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -171,7 +171,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: AppMd3Colors.background,
       appBar: AppTopBar(
-        title: 'Profile',
+        title: 'Perfil',
         leading: const AppIconBox(
           icon: Icon(Icons.call_split, color: Colors.white, size: 18),
           background: AppMd3Colors.primaryContainer,
@@ -202,7 +202,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   AppAvatar(initials: _initials(), size: 64),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    profile?.name ?? 'User',
+                    profile?.name ?? 'Usuario',
                     style: AppTypography.headlineMd(
                       color: AppSemanticColors.slate900,
                     ),
@@ -221,7 +221,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             // Edit Profile
             Text(
-              'EDIT PROFILE',
+              'EDITAR PERFIL',
               style: AppTypography.labelMd(color: AppSemanticColors.slate600),
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -236,7 +236,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 children: [
                   AppTextField(
-                    label: 'Name',
+                    label: 'Nombre',
                     controller: _nameController,
                     prefixIcon: const Icon(Icons.person_outline),
                   ),
@@ -249,7 +249,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: AppSpacing.md),
                   AppButton(
-                    label: 'Save Changes',
+                    label: 'Guardar cambios',
                     isLoading: _isSavingProfile,
                     onPressed: _isSavingProfile ? null : _handleSaveProfile,
                   ),
@@ -260,7 +260,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             // Change Password
             Text(
-              'CHANGE PASSWORD',
+              'CAMBIAR CONTRASEÑA',
               style: AppTypography.labelMd(color: AppSemanticColors.slate600),
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -275,21 +275,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 children: [
                   AppTextField(
-                    label: 'Current password',
+                    label: 'Contraseña actual',
                     controller: _oldPasswordController,
                     obscureText: true,
                     prefixIcon: const Icon(Icons.lock_outline),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   AppTextField(
-                    label: 'New password',
+                    label: 'Nueva contraseña',
                     controller: _newPasswordController,
                     obscureText: true,
                     prefixIcon: const Icon(Icons.lock_reset),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   AppButton(
-                    label: 'Update Password',
+                    label: 'Actualizar contraseña',
                     variant: AppButtonVariant.secondary,
                     isLoading: _isSavingPassword,
                     onPressed: _isSavingPassword ? null : _handleChangePassword,
@@ -301,7 +301,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             // Danger Zone
             Text(
-              'ACCOUNT',
+              'CUENTA',
               style: AppTypography.labelMd(color: AppSemanticColors.slate600),
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -316,7 +316,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 children: [
                   AppButton(
-                    label: 'Log Out',
+                    label: 'Cerrar sesión',
                     variant: AppButtonVariant.outline,
                     leadingIcon: const Icon(
                       Icons.logout,
@@ -326,7 +326,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: AppSpacing.md),
                   AppButton(
-                    label: 'Delete Account',
+                    label: 'Eliminar cuenta',
                     variant: AppButtonVariant.ghost,
                     leadingIcon: const Icon(
                       Icons.delete_outline,
@@ -344,13 +344,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       bottomNavigationBar: AppBottomNavBar(
         items: const [
-          AppBottomNavItem(icon: Icons.groups, label: 'Groups'),
-          AppBottomNavItem(icon: Icons.receipt_long, label: 'Activity'),
+          AppBottomNavItem(icon: Icons.groups, label: 'Grupos'),
+          AppBottomNavItem(icon: Icons.receipt_long, label: 'Actividad'),
           AppBottomNavItem(
             icon: Icons.account_balance_wallet,
-            label: 'Balances',
+            label: 'Saldos',
           ),
-          AppBottomNavItem(icon: Icons.person, label: 'Profile'),
+          AppBottomNavItem(icon: Icons.person, label: 'Perfil'),
         ],
         currentIndex: 3,
         onTap: _onNavTap,
@@ -398,13 +398,13 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Delete account'),
+      title: const Text('Eliminar cuenta'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Are you sure you want to delete your account? This action cannot be undone.',
+            '¿Seguro que quieres eliminar tu cuenta? Esta acción no se puede deshacer.',
           ),
           if (_error != null) ...[
             const SizedBox(height: AppSpacing.sm),
@@ -418,7 +418,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
       actions: [
         TextButton(
           onPressed: _isSubmitting ? null : () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
+          child: const Text('Cancelar'),
         ),
         TextButton(
           onPressed: _isSubmitting ? null : _handleDelete,
@@ -431,7 +431,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Delete'),
+              : const Text('Eliminar'),
         ),
       ],
     );

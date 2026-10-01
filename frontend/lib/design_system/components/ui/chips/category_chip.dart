@@ -19,24 +19,36 @@ const Map<ExpenseCategory, _CategoryStyle> _categoryStyles = {
   ExpenseCategory.food: _CategoryStyle(
     icon: Icons.restaurant,
     tint: Color(0xFFEA580C),
-    label: 'Food & Drink',
+    label: 'Comida y bebida',
   ),
   ExpenseCategory.transport: _CategoryStyle(
     icon: Icons.directions_car,
     tint: Color(0xFF0284C7),
-    label: 'Transport',
+    label: 'Transporte',
   ),
   ExpenseCategory.stay: _CategoryStyle(
     icon: Icons.home,
     tint: Color(0xFF7C3AED),
-    label: 'Stay',
+    label: 'Alojamiento',
   ),
   ExpenseCategory.activities: _CategoryStyle(
     icon: Icons.local_activity,
     tint: Color(0xFFCA8A04),
-    label: 'Activities',
+    label: 'Actividades',
   ),
 };
+
+/// Etiqueta en español de una categoría: la misma que pinta el chip.
+///
+/// Expuesta para que `core/utils/category_visual.dart` pueda mostrar el mismo
+/// texto en los puntos de la UI que reciben el string crudo de la API (los
+/// filtros de Group Details, el subtítulo del desglose de Balances) sin
+/// duplicar el texto en dos lugares que después se desincronizarían.
+///
+/// Ojo: esto NO es lo que viaja a la API. Ese valor en inglés vive en
+/// `expenseCategoryApiLabel` y no se toca.
+String categoryChipLabelOf(ExpenseCategory category) =>
+    _categoryStyles[category]!.label;
 
 /// Chip de categoría: seleccionado se llena de indigo (ícono/texto blanco);
 /// no seleccionado queda blanco con borde y el ícono en su color de tinte.

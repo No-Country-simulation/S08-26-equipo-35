@@ -16,6 +16,7 @@ import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_error_ui.dart';
+import '../../core/utils/category_visual.dart';
 import '../auth/data/auth_session.dart';
 import '../expenses/data/expense.dart';
 import '../expenses/data/expense_repository.dart';
@@ -23,13 +24,6 @@ import '../expenses/domain/equal_split.dart';
 import '../expenses/payer_picker_dialog.dart';
 import '../groups/data/group_detail.dart';
 import '../groups/data/group_repository.dart';
-
-const Map<ExpenseCategory, String> _categoryApiLabel = {
-  ExpenseCategory.food: 'Food & Drink',
-  ExpenseCategory.transport: 'Transport',
-  ExpenseCategory.stay: 'Stay',
-  ExpenseCategory.activities: 'Activities',
-};
 
 /// Pantalla de registrar gasto, conectada a POST /groups/{id}/expenses.
 ///
@@ -140,8 +134,8 @@ class _LogExpenseState extends State<LogExpense> {
   String _displayName(String userId) {
     final cached = _userProfiles[userId];
     if (cached != null) return cached;
-    if (userId == _myUserId) return AuthSession.instance.userName ?? 'You';
-    return 'Member ${userId.substring(0, userId.length >= 8 ? 8 : userId.length)}';
+    if (userId == _myUserId) return AuthSession.instance.userName ?? 'Vos';
+    return 'Miembro ${userId.substring(0, userId.length >= 8 ? 8 : userId.length)}';
   }
 
   String _initials(String userId) {
@@ -240,7 +234,7 @@ class _LogExpenseState extends State<LogExpense> {
         title: title,
         totalAmount: total,
         splitType: splitType,
-        expenseCategory: _categoryApiLabel[_category]!,
+        expenseCategory: expenseCategoryApiLabel[_category]!,
         splits: splits,
       );
       if (!mounted) return;
@@ -261,7 +255,7 @@ class _LogExpenseState extends State<LogExpense> {
     return Scaffold(
       backgroundColor: AppMd3Colors.background,
       appBar: AppTopBar(
-        title: 'Log Expense',
+        title: 'Cargar gasto',
         leading: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -315,11 +309,11 @@ class _LogExpenseState extends State<LogExpense> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     AppTextAction(
-                      label: 'Cancel',
+                      label: 'Cancelar',
                       onPressed: () => Navigator.pop(context),
                     ),
                     AppTextAction(
-                      label: 'Save',
+                      label: 'Guardar',
                       emphasized: true,
                       onPressed: _isSubmitting ? null : _handleSave,
                     ),
@@ -327,7 +321,7 @@ class _LogExpenseState extends State<LogExpense> {
                 ),
                 const SizedBox(height: AppSpacing.md),
                 AppButton(
-                  label: 'Save Expense (\$${_totalAmount.toStringAsFixed(2)})',
+                  label: 'Guardar gasto (\$${_totalAmount.toStringAsFixed(2)})',
                   leadingIcon: const Icon(
                     Icons.check,
                     color: Colors.white,
@@ -369,8 +363,8 @@ class _LogExpenseState extends State<LogExpense> {
                           : AppSemanticColors.negativeText,
                     ),
                     label: isMatched
-                        ? 'Balances perfectly with group'
-                        : 'Diff: \$${diff.toStringAsFixed(2)}',
+                        ? 'Cuadra perfecto con el grupo'
+                        : 'Diferencia: \$${diff.toStringAsFixed(2)}',
                     background: isMatched
                         ? AppSemanticColors.positiveContainer
                         : AppSemanticColors.negativeContainer,
@@ -383,8 +377,8 @@ class _LogExpenseState extends State<LogExpense> {
                 const SizedBox(height: AppSpacing.xl),
 
                 AppTextField(
-                  label: 'Description',
-                  hintText: 'What was this for?',
+                  label: 'Descripción',
+                  hintText: '¿Qué fue esto?',
                   controller: _titleController,
                   prefixIcon: const Icon(
                     Icons.receipt_long,
@@ -394,7 +388,7 @@ class _LogExpenseState extends State<LogExpense> {
                 const SizedBox(height: AppSpacing.md),
 
                 Text(
-                  'Category',
+                  'Categoría',
                   style: AppTypography.titleMd(
                     color: AppSemanticColors.slate900,
                   ),
@@ -425,13 +419,13 @@ class _LogExpenseState extends State<LogExpense> {
                       initials: _initials(_payerUserId ?? _myUserId ?? '?'),
                       size: 40,
                     ),
-                    label: 'Paid by',
+                    label: 'Pagado por',
                     value: _displayName(_payerUserId ?? _myUserId ?? '?'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         AppTag(
-                          label: 'Primary',
+                          label: 'Principal',
                           background: AppMd3Colors.surfaceContainer,
                           foreground: AppMd3Colors.primaryContainer,
                           uppercase: false,
@@ -450,7 +444,7 @@ class _LogExpenseState extends State<LogExpense> {
                 Row(
                   children: [
                     Text(
-                      'For whom?',
+                      '¿Para quién?',
                       style: AppTypography.headlineSm(
                         color: AppSemanticColors.slate900,
                       ),
@@ -464,7 +458,7 @@ class _LogExpenseState extends State<LogExpense> {
                     ),
                     const Spacer(),
                     AppTextAction(
-                      label: 'Select all',
+                      label: 'Seleccionar todos',
                       emphasized: true,
                       onPressed: () => setState(() {
                         _selectedMemberIds
@@ -504,17 +498,17 @@ class _LogExpenseState extends State<LogExpense> {
                 const SizedBox(height: AppSpacing.lg),
 
                 AppSegmentedToggle(
-                  options: const ['Split equally', 'Custom amounts'],
+                  options: const ['Reparto igual', 'Montos personalizados'],
                   selectedIndex: _splitTypeIndex,
                   onChanged: (index) => setState(() => _splitTypeIndex = index),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 SplitStatusBanner(
                   isMatched: isMatched,
-                  title: isMatched ? 'Matches total' : 'Does not match total',
+                  title: isMatched ? 'Coincide con el total' : 'No coincide con el total',
                   allocatedLabel:
-                      'Allocated: \$${allocated.toStringAsFixed(2)}',
-                  diffLabel: 'Diff: \$${diff.toStringAsFixed(2)}',
+                      'Asignado: \$${allocated.toStringAsFixed(2)}',
+                  diffLabel: 'Diferencia: \$${diff.toStringAsFixed(2)}',
                 ),
                 if (_splitTypeIndex == 1) ...[
                   const SizedBox(height: AppSpacing.sm),

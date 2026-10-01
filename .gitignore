@@ -1,0 +1,7 @@
+# Artefactos de build compilados.
+# Un .apk pesa ~18 MB y versionado en git no se puede borrar del historial:
+# queda en el clon de todos, para siempre. Para distribuir binarios usar
+# GitHub Releases o un artefacto de CI, no el repo.
+*.apk
+*.aab
+*.ipa

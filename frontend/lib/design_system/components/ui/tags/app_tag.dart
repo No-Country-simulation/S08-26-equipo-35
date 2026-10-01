@@ -3,9 +3,10 @@ import '../../../tokens/app_colors.dart';
 import '../../../tokens/app_tokens.dart';
 import '../../../tokens/app_typography.dart';
 
-/// Pill pequeño tipo "eyebrow" sobre un título, ej. "EFFORTLESS GROUP MATH".
-/// Genérico: el color por defecto es el tinte indigo, pero acepta otro
-/// background/foreground si se reutiliza en otro contexto.
+/// Pill de texto pequeño reutilizable. Sirve tanto para eyebrows en
+/// mayúsculas ("EFFORTLESS GROUP MATH") como para pills de estado con
+/// case normal ("Barcelona Summer Trip", "4 selected") — controla cuál
+/// con `uppercase`.
 class AppTag extends StatelessWidget {
   const AppTag({
     super.key,
@@ -13,12 +14,14 @@ class AppTag extends StatelessWidget {
     this.icon,
     this.background = AppMd3Colors.surfaceContainer,
     this.foreground = AppMd3Colors.primaryContainer,
+    this.uppercase = true,
   });
 
   final String label;
   final Widget? icon;
   final Color background;
   final Color foreground;
+  final bool uppercase;
 
   @override
   Widget build(BuildContext context) {
@@ -36,8 +39,10 @@ class AppTag extends StatelessWidget {
         children: [
           if (icon != null) ...[icon!, const SizedBox(width: AppSpacing.xs2)],
           Text(
-            label.toUpperCase(),
-            style: AppTypography.labelMd(color: foreground),
+            uppercase ? label.toUpperCase() : label,
+            style: uppercase
+                ? AppTypography.labelMd(color: foreground)
+                : AppTypography.bodySm(color: foreground),
           ),
         ],
       ),

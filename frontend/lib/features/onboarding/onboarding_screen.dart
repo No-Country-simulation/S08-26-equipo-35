@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../design_system/components/ui/avatars/avatar_stack.dart';
 import '../../design_system/components/ui/buttons/app_button.dart';
@@ -8,9 +9,20 @@ import '../../design_system/components/ui/text_fields/app_text_field.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_tokens.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../core/network/api_client.dart';
+import '../../core/network/api_error_ui.dart';
+import '../auth/data/auth_repository.dart';
+import '../../router/app_router.dart';
 
-/// SOLO MAQUETA — sin controllers, sin onPressed reales, sin navegación.
-/// Reemplaza los `() {}` y el placeholder de logo cuando conectes lógica.
+/// Onboarding: landing + alta de cuenta, CONECTADO.
+///
+/// Esta clase solía llevar arriba un marker de "solo maqueta" que ya no aplica:
+/// la landing y el `_TrustedCommunityCard` son presentacionales, pero el alta
+/// vive en `_AuthCard` (más abajo en este archivo) y sí está conectada — hace
+/// `register` → `login` → `fetchProfile` y navega a Home.
+///
+/// La única pantalla que sigue siendo maqueta en toda la app es
+/// `history.dart`, que tiene su propio marker.
 class OnboardingScreen extends StatelessWidget {
   const OnboardingScreen({super.key});
 
@@ -27,18 +39,16 @@ class OnboardingScreen extends StatelessWidget {
             children: [
               _LogoMark(),
               const SizedBox(height: AppSpacing.lg),
-              const AppTag(label: 'Effortless group math'),
+              const AppTag(label: 'Cuentas en grupo sin esfuerzo'),
               const SizedBox(height: AppSpacing.md),
               Text(
-                'Welcome to SplitFlow',
+                'Te damos la bienvenida a SplitFlow',
                 textAlign: TextAlign.center,
-                style: AppTypography.headlineLg(
-                  color: AppSemanticColors.slate900,
-                ),
+                style: AppTypography.headlineLg(color: AppSemanticColors.slate900),
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                'Split expenses with friends, no stress, no math.',
+                'Reparte gastos con amigos: sin estrés y sin cuentas.',
                 textAlign: TextAlign.center,
                 style: AppTypography.bodyLg(color: AppSemanticColors.slate600),
               ),
@@ -51,25 +61,19 @@ class OnboardingScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: FeatureCard(
-                      icon: const Icon(
-                        Icons.receipt_long,
-                        color: AppMd3Colors.primaryContainer,
-                      ),
+                      icon: const Icon(Icons.receipt_long, color: AppMd3Colors.primaryContainer),
                       iconBackground: AppMd3Colors.surfaceContainer,
-                      title: 'Smart Splitting',
-                      description: 'Unequal, percentages, itemized bills',
+                      title: 'Reparto inteligente',
+                      description: 'Desigual, por porcentaje o por concepto',
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: FeatureCard(
-                      icon: const Icon(
-                        Icons.lock_open,
-                        color: AppSemanticColors.positive,
-                      ),
+                      icon: const Icon(Icons.lock_open, color: AppSemanticColors.positive),
                       iconBackground: AppSemanticColors.positiveContainer,
-                      title: 'Zero Passwords',
-                      description: 'Instant one-tap login magic links',
+                      title: 'Sin contraseñas',
+                      description: 'Acceso instantáneo con enlaces mágicos',
                     ),
                   ),
                 ],
@@ -97,10 +101,7 @@ class _LogoMark extends StatelessWidget {
             borderRadius: AppRadius.lgRadius,
           ),
           child: Center(
-            child: Text(
-              'img',
-              style: AppTypography.bodySm(color: AppSemanticColors.slate400),
-            ),
+            child: Text('imagen', style: AppTypography.bodySm(color: AppSemanticColors.slate400)),
           ),
         ),
         Positioned(
@@ -121,7 +122,51 @@ class _LogoMark extends StatelessWidget {
   }
 }
 
-class _AuthCard extends StatelessWidget {
+class _AuthCard extends StatefulWidget {
+  @override
+  State<_AuthCard> createState() => _AuthCardState();
+}
+
+class _AuthCardState extends State<_AuthCard> {
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleRegister() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    setState(() => _isLoading = true);
+    try {
+      await AuthRepository.instance.register(name: name, email: email, password: password);
+      // El registro no devuelve sesión (solo email + created_at), así que
+      // logueamos con las mismas credenciales para obtener el access_token
+      // antes de entrar a Home.
+      await AuthRepository.instance.login(email: email, password: password);
+      await AuthRepository.instance.fetchProfile();
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, AppRoutes.home);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      showApiError(context, e);
+    } catch (error) {
+      if (!mounted) return;
+      showApiError(context, error);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -135,53 +180,79 @@ class _AuthCard extends StatelessWidget {
       child: Column(
         children: [
           AppButton(
-            label: 'Continue with Google',
+            label: 'Continuar con Google',
             variant: AppButtonVariant.outline,
-            leadingIcon: const Icon(
-              Icons.g_mobiledata,
-              size: 24,
-            ), // placeholder del logo de Google
+            leadingIcon: const Icon(Icons.g_mobiledata, size: 24), // placeholder del logo de Google
             onPressed: () {},
           ),
           const SizedBox(height: AppSpacing.md),
-          const AppDividerWithLabel(label: 'or with email'),
+          const AppDividerWithLabel(label: 'o con email'),
           const SizedBox(height: AppSpacing.md),
-          const AppTextField(
-            label: 'Email address',
+          AppTextField(
+            label: 'Nombre completo',
+            hintText: 'Ana Rivera',
+            controller: _nameController,
+            prefixIcon: const Icon(Icons.person_outline),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          AppTextField(
+            label: 'Email',
             hintText: 'alex@example.com',
-            prefixIcon: Icon(Icons.mail_outline),
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            prefixIcon: const Icon(Icons.mail_outline),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          AppTextField(
+            label: 'Contraseña',
+            hintText: '••••••••',
+            controller: _passwordController,
+            obscureText: true,
+            prefixIcon: const Icon(Icons.lock_outline),
           ),
           const SizedBox(height: AppSpacing.md),
           AppButton(
-            label: 'Continue',
-            trailingIcon: const Icon(
-              Icons.arrow_forward,
-              color: Colors.white,
-              size: 18,
-            ),
-            onPressed: () {},
+            label: 'Continuar',
+            isLoading: _isLoading,
+            trailingIcon: _isLoading
+                ? null
+                : const Icon(Icons.arrow_forward, color: Colors.white, size: 18),
+            onPressed: _isLoading ? null : _handleRegister,
           ),
           const SizedBox(height: AppSpacing.md),
           Text.rich(
             TextSpan(
               style: AppTypography.bodySm(color: AppSemanticColors.slate400),
               children: [
-                const TextSpan(text: 'By continuing, you agree to our '),
+                const TextSpan(text: 'Al continuar, aceptas nuestros '),
                 TextSpan(
-                  text: 'Terms',
-                  style: AppTypography.bodySm(
-                    color: AppMd3Colors.primaryContainer,
-                  ),
+                  text: 'Términos',
+                  style: AppTypography.bodySm(color: AppMd3Colors.primaryContainer),
                 ),
                 const TextSpan(text: ' & '),
                 TextSpan(
-                  text: 'Privacy Policy',
-                  style: AppTypography.bodySm(
-                    color: AppMd3Colors.primaryContainer,
-                  ),
+                  text: 'Política de privacidad',
+                  style: AppTypography.bodySm(color: AppMd3Colors.primaryContainer),
                 ),
                 const TextSpan(
                   text: '. Passwordless login link will be sent to your inbox.',
+                ),
+              ],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text.rich(
+            TextSpan(
+              style: AppTypography.bodySm(color: AppSemanticColors.slate600),
+              children: [
+                const TextSpan(text: '¿Ya tienes una cuenta? '),
+                TextSpan(
+                  text: 'Inicia sesión',
+                  style: AppTypography.bodySm(color: AppMd3Colors.primaryContainer)
+                      .copyWith(fontWeight: FontWeight.w600),
+                  recognizer: TapGestureRecognizer()
+                    ..onTap = () => Navigator.pushReplacementNamed(context, AppRoutes.login),
                 ),
               ],
             ),
@@ -208,14 +279,8 @@ class _TrustedCommunityCard extends StatelessWidget {
           AppAvatarStack(
             avatars: const [
               AppAvatar(initials: 'JD', backgroundColor: Color(0xFF006C49)),
-              AppAvatar(
-                initials: 'SR',
-                backgroundColor: AppMd3Colors.primaryContainer,
-              ),
-              AppAvatar(
-                initials: 'MK',
-                backgroundColor: AppSemanticColors.negative,
-              ),
+              AppAvatar(initials: 'SR', backgroundColor: AppMd3Colors.primaryContainer),
+              AppAvatar(initials: 'MK', backgroundColor: AppSemanticColors.negative),
             ],
             extraCountLabel: '+3k',
           ),
@@ -224,18 +289,11 @@ class _TrustedCommunityCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Trusted Community',
-                  style: AppTypography.titleMd(
-                    color: AppSemanticColors.slate900,
-                  ),
-                ),
+                Text('Comunidad de confianza', style: AppTypography.titleMd(color: AppSemanticColors.slate900)),
                 const SizedBox(height: AppSpacing.xs2),
                 Text(
-                  'Trusted by 120,000+ friends & roommates to split effortlessly.',
-                  style: AppTypography.bodySm(
-                    color: AppSemanticColors.slate600,
-                  ),
+                  '120.000+ amigos y compañeros de casa ya reparten gastos sin esfuerzo.',
+                  style: AppTypography.bodySm(color: AppSemanticColors.slate600),
                 ),
               ],
             ),

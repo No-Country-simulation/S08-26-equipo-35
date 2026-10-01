@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:splitflow/design_system/theme/app_theme.dart';
-import 'package:splitflow/features/onboarding/onboarding_screen.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'design_system/theme/app_theme.dart';
+import 'features/auth/data/auth_session.dart';
+import 'router/app_router.dart';
 
-void main() {
-  runApp(const MainApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
+  // Restaura token + perfil persistidos antes de construir la app —
+  // el SessionGate (ruta inicial) decide a dónde va con eso ya cargado.
+  await AuthSession.instance.init();
+  runApp(const SplitFlowApp());
 }
 
-void nextapp() {}
-
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class SplitFlowApp extends StatelessWidget {
+  const SplitFlowApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +22,8 @@ class MainApp extends StatelessWidget {
       title: 'SplitFlow',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
-      home: Scaffold(body: Center(child: OnboardingScreen())),
+      initialRoute: AppRoutes.sessionGate,
+      routes: AppRouter.routes,
     );
   }
 }

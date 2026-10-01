@@ -9,7 +9,7 @@ import '../../../theme/app_theme.dart';
 /// de autenticación social ("Continue with Google"), que comparte la misma
 /// geometría pero necesita fondo blanco + borde.
 enum AppButtonVariant {
-  /// Relleno sólido indigo (#4F46E5). CTAs principales: "Settle Up", "Add Expense".
+  /// Relleno sólido indigo (#4F46E5). CTAs principales: "Add Expense".
   primary,
 
   /// Superficie tintada (#EEF2FF) + texto indigo. Sin borde.
@@ -22,11 +22,9 @@ enum AppButtonVariant {
   outline,
 }
 
-/// Botón único de SplitFlow. Las 3 variantes de DESIGN.md comparten
-/// geometría (48px alto, pill, padding 24px) y la animación de press
-/// (scale 0.98) — por eso es un solo widget parametrizado por variante,
-/// no tres clases separadas. Si mañana cambia el timing de la animación,
-/// se edita en un solo lugar.
+/// Botón único de SplitFlow. Las 4 variantes comparten geometría (48px
+/// alto, pill, padding 24px) y la animación de press (scale 0.98) — por
+/// eso es un solo widget parametrizado, no una clase por variante.
 class AppButton extends StatefulWidget {
   const AppButton({
     super.key,
@@ -37,6 +35,8 @@ class AppButton extends StatefulWidget {
     this.trailingIcon,
     this.isLoading = false,
     this.expand = true,
+    this.backgroundOverride,
+    this.foregroundOverride,
   });
 
   final String label;
@@ -48,6 +48,14 @@ class AppButton extends StatefulWidget {
 
   /// true = ancho completo (como "Continue", "Save Expense" en las capturas).
   final bool expand;
+
+  /// Para casos puntuales que no encajan en ninguna variante (ej. el botón
+  /// verde oscuro "Settle Up" de Group Details). Si se pasan, ganan sobre
+  /// el color de `variant`. Úsalos como excepción, no como regla — si
+  /// terminas repitiendo el mismo par de colores en 3+ lugares, probablemente
+  /// merece ser una variante nueva del enum en vez de un override suelto.
+  final Color? backgroundOverride;
+  final Color? foregroundOverride;
 
   @override
   State<AppButton> createState() => _AppButtonState();
@@ -68,6 +76,15 @@ class _AppButtonState extends State<AppButton> {
         border: null,
       );
     }
+
+    if (widget.backgroundOverride != null || widget.foregroundOverride != null) {
+      return (
+        background: widget.backgroundOverride ?? AppMd3Colors.primaryContainer,
+        foreground: widget.foregroundOverride ?? Colors.white,
+        border: null,
+      );
+    }
+
     switch (widget.variant) {
       case AppButtonVariant.primary:
         return (
@@ -83,9 +100,7 @@ class _AppButtonState extends State<AppButton> {
         );
       case AppButtonVariant.ghost:
         return (
-          background: _pressed
-              ? AppSemanticColors.slate100
-              : Colors.transparent,
+          background: _pressed ? AppSemanticColors.slate100 : Colors.transparent,
           foreground: AppSemanticColors.slate600,
           border: null,
         );
@@ -147,7 +162,9 @@ class _AppButtonState extends State<AppButton> {
             border: colors.border != null
                 ? Border.all(color: colors.border!)
                 : null,
-            boxShadow: widget.variant == AppButtonVariant.primary && _isEnabled
+            boxShadow: widget.variant == AppButtonVariant.primary &&
+                    _isEnabled &&
+                    widget.backgroundOverride == null
                 ? AppShadows.level2
                 : null,
           ),

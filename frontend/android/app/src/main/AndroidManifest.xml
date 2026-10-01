@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Necesaria también en release: sin ella, el build release no puede
+         hacer ninguna llamada HTTP (el manifest debug/profile solo la
+         inyecta en flutter run, no en APKs de producción). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="splitflow"
         android:name="${applicationName}"
